@@ -2,6 +2,7 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from PIL import Image
 from base64 import b64decode
+from io import BytesIO
 
 # server params
 hostName = "localhost"
@@ -11,6 +12,7 @@ serverPort = 6969
 max_height = 500
 max_width = 500
 allowed_image_type = "PNG"
+Image.MAX_IMAGE_PIXELS = (max_height * max_width) # change pillow setting to prevent zip bomb style attack
 
 class MyServer(BaseHTTPRequestHandler):
     
@@ -28,7 +30,7 @@ class MyServer(BaseHTTPRequestHandler):
         body = self.rfile.read(content_length)
 
         # verify content 
-        self.validate_image(body)
+        img = self.validate_image(body)
 
         # save to file 
 
@@ -39,15 +41,24 @@ class MyServer(BaseHTTPRequestHandler):
         try:
             print(type(body))
             # convert from base64
-            body_decoded = b64decode(str(body))
+            body_str = body.decode("utf-8")
+            body_decoded = BytesIO(b64decode(body_str))
             print(type(body_decoded))
-            self.wfile.write(body_decoded)
-
-            # check for zip bomb 
 
             # load in pillow and verify contents
+            print(Image.MAX_IMAGE_PIXELS)
+            img = Image.open(body_decoded)
+            try:
+                img.verify()
+                print("Valid image")
+                return img
+            except:
+                print("Invalid image")
+
         except:
-            return None
+            print("Invalid body.")
+
+        return None
 
 if __name__ == "__main__":        
     webServer = HTTPServer((hostName, serverPort), MyServer)
