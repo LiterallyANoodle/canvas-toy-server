@@ -14,7 +14,7 @@ max_width = 500
 allowed_image_type = "PNG"
 Image.MAX_IMAGE_PIXELS = (max_height * max_width) # change pillow setting to prevent zip bomb style attack
 
-class MyServer(BaseHTTPRequestHandler):
+class CanvasToyServer(BaseHTTPRequestHandler):
     
     def do_POST(self) -> None:
 
