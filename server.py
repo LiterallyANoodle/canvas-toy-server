@@ -3,6 +3,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from PIL import Image
 from base64 import b64decode
 from io import BytesIO
+import datetime
+from pathlib import Path
 
 # server params
 hostName = "localhost"
@@ -20,11 +22,6 @@ class CanvasToyServer(BaseHTTPRequestHandler):
 
         # check source/prevent spam 
 
-        # write headers
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-
         # read incoming body
         content_length = int(self.headers['Content-Length'])
         body = self.rfile.read(content_length)
@@ -33,35 +30,54 @@ class CanvasToyServer(BaseHTTPRequestHandler):
         img = self.validate_image(body)
 
         # save to file 
+        self.save_image(img, self.client_address[0])
 
         # send on discord webhook 
+
+        # write headers based on status
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
 
     def validate_image(self, body) -> Image:
         
         try:
-            print(type(body))
             # convert from base64
             body_str = body.decode("utf-8")
-            body_decoded = BytesIO(b64decode(body_str))
-            print(type(body_decoded))
+            (body_prefix, body_suffix) = body_str.split(',')
+            assert body_prefix == 'data:image/png;base64'
+            img_bytes = BytesIO(b64decode(body_suffix))
 
             # load in pillow and verify contents
-            print(Image.MAX_IMAGE_PIXELS)
-            img = Image.open(body_decoded)
             try:
+                img = Image.open(img_bytes)
                 img.verify()
-                print("Valid image")
-                return img
+                print("Valid image.")
+                return Image.open(img_bytes)
             except:
-                print("Invalid image")
+                print("Invalid image.")
 
         except:
             print("Invalid body.")
 
-        return None
+        raise ValueError
+    
+    def save_image(self, img, sender_ip) -> None:
+
+        # remove transparency 
+        if img.mode in ('RGBA', 'LA'):
+            alpha = img.getchannel('A')
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            background.paste(img, mask=alpha)
+            img = background
+
+        # make unique name and save
+        timestamp = datetime.datetime.now()
+        fp = Path('./saved_images')
+        img.save((fp / f'{str(timestamp).replace(':', '.')} {sender_ip}.png'), 'PNG')
 
 if __name__ == "__main__":        
-    webServer = HTTPServer((hostName, serverPort), MyServer)
+    webServer = HTTPServer((hostName, serverPort), CanvasToyServer)
     print(f"Server started http://{hostName}:{serverPort}")
 
     try:
