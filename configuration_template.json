@@ -1,0 +1,8 @@
+{
+    "host_name": "localhost", 
+    "server_port": 6969,
+    "max_height": 500,
+    "max_width": 500, 
+    "allowed_image_type": "PNG",
+    "saved_images_path": "./saved_images"
+}
