@@ -4,6 +4,7 @@ from PIL import Image
 from base64 import b64decode
 from io import BytesIO
 import datetime
+from time import time
 from pathlib import Path
 import json
 from uuid import uuid4
@@ -34,8 +35,15 @@ class CanvasToyServer(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
 
         timestamp = datetime.datetime.now()
-
-        # check source/prevent spam 
+        time_sec = time()
+        # prevent spam with global rate limit
+        global request_history
+        request_history.append(time_sec)
+        request_history = [t for t in request_history if (t + config['global_rate_period']) > time_sec] # remove expired request history
+        if len(request_history) > config['global_rate_limit']:
+            print("Request dropped: rate limit exceeded.")
+            self.send_post_response(503, "Receiving too many requests! Please wait a while.\n")
+            return
 
         # read incoming body
         content_length = int(self.headers['Content-Length'])
@@ -53,16 +61,16 @@ class CanvasToyServer(BaseHTTPRequestHandler):
         # save to file 
         try:
             img = self.save_image(img, self.client_address[0], timestamp)
-            response_body += "Successfully saved image! \n"
+            response_body += "Successfully saved image!\n"
         except:
-            response_body += "Failed to save image. \n"
+            response_body += "Failed to save image.\n"
 
         # send on discord webhook 
         wh_status = self.send_image_on_discord_webhook(config['webhook_path'], img, timestamp)
         if wh_status == 200:
-            response_body += "Successfully sent to discord! \n"
+            response_body += "Successfully sent to discord!\n"
         else:
-            response_body += "Failed to send to discord. \n"
+            response_body += "Failed to send to discord.\n"
 
         self.send_post_response(200, response_body)
 
@@ -104,7 +112,7 @@ class CanvasToyServer(BaseHTTPRequestHandler):
 
         # make unique name and save
         fp = Path(config['saved_images_path'])
-        img.save((fp / f'{str(timestamp).replace(':', '.')} {sender_ip}.png'), 'PNG')
+        img.save((fp / f'{str(timestamp).replace(':', '.')}.png'), 'PNG')
         return img
 
     def send_image_on_discord_webhook(self, webhook_path, img, timestamp) -> int:
@@ -149,6 +157,7 @@ class CanvasToyServer(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     config = ServerConfiguration().configuration
+    request_history = []
     web_server = HTTPServer((config['host_name'], config['server_port']), CanvasToyServer)
     print(f"Server started http://{config['host_name']}:{config['server_port']}")
 

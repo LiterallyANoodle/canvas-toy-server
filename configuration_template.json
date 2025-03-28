@@ -5,5 +5,7 @@
     "max_width": 500, 
     "allowed_image_type": "PNG",
     "saved_images_path": "./saved_images",
-    "webhook_path": ""
+    "webhook_path": "",
+    "global_rate_period": 3600,
+    "global_rate_limit": 100
 }
