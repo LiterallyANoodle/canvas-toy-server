@@ -4,5 +4,6 @@
     "max_height": 500,
     "max_width": 500, 
     "allowed_image_type": "PNG",
-    "saved_images_path": "./saved_images"
+    "saved_images_path": "./saved_images",
+    "webhook_path": ""
 }

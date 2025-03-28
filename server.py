@@ -6,6 +6,8 @@ from io import BytesIO
 import datetime
 from pathlib import Path
 import json
+from uuid import uuid4
+import http.client
 
 class ServerConfiguration:
 
@@ -31,6 +33,8 @@ class CanvasToyServer(BaseHTTPRequestHandler):
     
     def do_POST(self) -> None:
 
+        timestamp = datetime.datetime.now()
+
         # check source/prevent spam 
 
         # read incoming body
@@ -48,12 +52,17 @@ class CanvasToyServer(BaseHTTPRequestHandler):
 
         # save to file 
         try:
-            self.save_image(img, self.client_address[0])
+            img = self.save_image(img, self.client_address[0], timestamp)
             response_body += "Successfully saved image! \n"
         except:
             response_body += "Failed to save image. \n"
 
         # send on discord webhook 
+        wh_status = self.send_image_on_discord_webhook(config['webhook_path'], img, timestamp)
+        if wh_status == 200:
+            response_body += "Successfully sent to discord! \n"
+        else:
+            response_body += "Failed to send to discord. \n"
 
         self.send_post_response(200, response_body)
 
@@ -84,7 +93,7 @@ class CanvasToyServer(BaseHTTPRequestHandler):
             print(f"{datetime.datetime.now()} Invalid body from {self.client_address[0]}")
             raise ValueError
     
-    def save_image(self, img, sender_ip) -> None:
+    def save_image(self, img, sender_ip, timestamp) -> Image:
 
         # remove transparency 
         if img.mode in ('RGBA', 'LA'):
@@ -94,9 +103,49 @@ class CanvasToyServer(BaseHTTPRequestHandler):
             img = background
 
         # make unique name and save
-        timestamp = datetime.datetime.now()
         fp = Path(config['saved_images_path'])
         img.save((fp / f'{str(timestamp).replace(':', '.')} {sender_ip}.png'), 'PNG')
+        return img
+
+    def send_image_on_discord_webhook(self, webhook_path, img, timestamp) -> int:
+
+        boundary = f'------Boundary{uuid4().hex}'
+
+        payload_json = json.dumps({"content":f"{timestamp}"})
+
+        message_body = \
+        f'--{boundary}\r\n' + \
+        f'Content-Disposition: form-data; name="payload_json"\r\n' + \
+        f'Content-Type: application/json\r\n\r\n' + \
+        f'{payload_json}\r\n' + \
+        f'--{boundary}\r\n' + \
+        f'Content-Disposition: form-data; name="file"; filename="{str(timestamp).replace(":", ".")}.png"\r\n' + \
+        f'Content-Type: application/octet-stream\r\n\r\n'
+
+        img_bytes = BytesIO()
+        img.save(img_bytes, format='PNG')
+
+        message_body = message_body.encode() + img_bytes.getvalue() + f'\r\n--{boundary}--\r\n'.encode()
+
+        headers = {
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Content-Length": str(len(message_body))
+        }
+
+        conn = http.client.HTTPSConnection('discord.com')
+        conn.request(
+            'POST',
+            f'{webhook_path}',
+            body=message_body,
+            headers=headers
+        )
+
+        response = conn.getresponse()
+        print(f"Status: {response.status}")
+        print("Response:", response.read().decode())
+        conn.close()
+
+        return response.status
 
 if __name__ == "__main__":
     config = ServerConfiguration().configuration
