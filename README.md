@@ -4,7 +4,7 @@ Using python 3.12
 
 Recommend using a virtual environment.
 
-Install packages with `pip install requirements.txt`.
+Install packages with `pip install -r requirements.txt`.
 
 ## Configuration
 ```json
