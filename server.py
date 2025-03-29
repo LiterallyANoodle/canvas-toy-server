@@ -62,7 +62,8 @@ class CanvasToyServer(BaseHTTPRequestHandler):
         try:
             img = self.save_image(img, self.client_address[0], timestamp)
             response_body += "Successfully saved image!\n"
-        except:
+        except Exception as e:
+            print(type(e))
             response_body += "Failed to save image.\n"
 
         # send on discord webhook 
@@ -104,6 +105,7 @@ class CanvasToyServer(BaseHTTPRequestHandler):
     def save_image(self, img, sender_ip, timestamp) -> Image:
 
         # remove transparency 
+        print(f"Image in mode {img.mode}")
         if img.mode in ('RGBA', 'LA'):
             alpha = img.getchannel('A')
             background = Image.new('RGB', img.size, (255, 255, 255))
@@ -112,7 +114,8 @@ class CanvasToyServer(BaseHTTPRequestHandler):
 
         # make unique name and save
         fp = Path(config['saved_images_path'])
-        img.save((fp / f'{str(timestamp).replace(':', '.')}.png'), 'PNG')
+        img.save((fp / f'{str(timestamp).replace(":", ".")}.png').resolve(), 'PNG')
+
         return img
 
     def send_image_on_discord_webhook(self, webhook_path, img, timestamp) -> int:
