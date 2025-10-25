@@ -58,9 +58,16 @@ class CanvasToyServer(BaseHTTPRequestHandler):
             self.send_post_response(400, "Invalid message body.\n")
             return
 
+        # set background to white
+        try:
+            img = self.modify_image(img)
+        except Exception as e:
+            print(type(e))
+            response_body += "Failed to modify image. \n"
+
         # save to file 
         try:
-            img = self.save_image(img, self.client_address[0], timestamp)
+            self.save_image(img, self.client_address[0], timestamp)
             response_body += "Successfully saved image!\n"
         except Exception as e:
             print(type(e))
@@ -102,7 +109,13 @@ class CanvasToyServer(BaseHTTPRequestHandler):
             print(f"{datetime.datetime.now()} Invalid body from {self.client_address[0]}")
             raise ValueError
     
-    def save_image(self, img, sender_ip, timestamp) -> Image:
+    def save_image(self, img, sender_ip, timestamp) -> None:
+
+        # make unique name and save
+        fp = Path(config['saved_images_path'])
+        img.save((fp / f'{str(timestamp).replace(":", ".")}.png').resolve(), 'PNG')
+
+    def modify_image(self, img) -> Image:
 
         # remove transparency 
         print(f"Image in mode {img.mode}")
@@ -111,10 +124,6 @@ class CanvasToyServer(BaseHTTPRequestHandler):
             background = Image.new('RGB', img.size, (255, 255, 255))
             background.paste(img, mask=alpha)
             img = background
-
-        # make unique name and save
-        fp = Path(config['saved_images_path'])
-        img.save((fp / f'{str(timestamp).replace(":", ".")}.png').resolve(), 'PNG')
 
         return img
 
