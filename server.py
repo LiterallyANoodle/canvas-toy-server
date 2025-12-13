@@ -2,6 +2,7 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from PIL import Image
 from base64 import b64decode
+from base64 import b64encode
 from io import BytesIO
 import datetime
 from time import time
@@ -53,7 +54,7 @@ class CanvasToyServer(BaseHTTPRequestHandler):
 
         # verify content 
         try: 
-            img = self.validate_image(body)
+            img, img_base64 = self.validate_image(body)
         except: 
             self.send_post_response(400, "Invalid message body.\n")
             return
@@ -67,14 +68,14 @@ class CanvasToyServer(BaseHTTPRequestHandler):
 
         # save to file 
         try:
-            self.save_image(img, self.client_address[0], timestamp)
+            self.save_image(img, img_base64, timestamp)
             response_body += "Successfully saved image!\n"
         except Exception as e:
             print(type(e))
             response_body += "Failed to save image.\n"
 
         # send on discord webhook 
-        wh_status = self.send_image_on_discord_webhook(config['webhook_path'], img, timestamp)
+        wh_status = self.send_image_on_discord_webhook(config['webhook_path'], img, img_base64, timestamp)
         if wh_status == 200:
             response_body += "Successfully sent to discord!\n"
         else:
@@ -103,17 +104,17 @@ class CanvasToyServer(BaseHTTPRequestHandler):
             img = Image.open(img_bytes)
             img.verify()
             print("Valid image.")
-            return Image.open(img_bytes)
+            return Image.open(img_bytes), body_suffix
 
         except:
             print(f"{datetime.datetime.now()} Invalid body from {self.client_address[0]}")
             raise ValueError
     
-    def save_image(self, img, sender_ip, timestamp) -> None:
+    def save_image(self, img, img_base64, timestamp) -> None:
 
         # make unique name and save
         fp = Path(config['saved_images_path'])
-        img.save((fp / f'{str(timestamp).replace(":", ".")}.png').resolve(), 'PNG')
+        img.save((fp / f'{str(timestamp).replace(":", ".")} {img_base64[:16]}.png').resolve(), 'PNG')
 
     def modify_image(self, img) -> Image:
 
@@ -127,7 +128,7 @@ class CanvasToyServer(BaseHTTPRequestHandler):
 
         return img
 
-    def send_image_on_discord_webhook(self, webhook_path, img, timestamp) -> int:
+    def send_image_on_discord_webhook(self, webhook_path, img, img_base64, timestamp) -> int:
 
         boundary = f'------Boundary{uuid4().hex}'
 
@@ -139,7 +140,7 @@ class CanvasToyServer(BaseHTTPRequestHandler):
         f'Content-Type: application/json\r\n\r\n' + \
         f'{payload_json}\r\n' + \
         f'--{boundary}\r\n' + \
-        f'Content-Disposition: form-data; name="file"; filename="{str(timestamp).replace(":", ".")}.png"\r\n' + \
+        f'Content-Disposition: form-data; name="file"; filename="{str(timestamp).replace(":", ".")} {img_base64[:16]}.png"\r\n' + \
         f'Content-Type: application/octet-stream\r\n\r\n'
 
         img_bytes = BytesIO()
@@ -177,7 +178,6 @@ if __name__ == "__main__":
         web_server.serve_forever()
     except KeyboardInterrupt:
         print("Received interrupt command.")
-        pass
 
     web_server.server_close()
     print("Server stopped.")
