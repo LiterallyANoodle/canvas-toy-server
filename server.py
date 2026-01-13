@@ -56,7 +56,7 @@ class CanvasToyServer(BaseHTTPRequestHandler):
         
         # verify content 
         try: 
-            img, img_base64 = self.validate_image(body)
+            img = self.validate_image(body)
         except: 
             self.send_post_response(400, "Invalid message body.\n")
             return
@@ -88,7 +88,7 @@ class CanvasToyServer(BaseHTTPRequestHandler):
             response_body += "Failed to save image.\n"
 
         # send on discord webhook 
-        wh_status = self.send_image_on_discord_webhook(config['webhook_path'], img, img_base64, timestamp)
+        wh_status = self.send_image_on_discord_webhook(config['webhook_path'], img, img_UUID)
         if wh_status == 200:
             response_body += "Successfully sent to discord!\n"
         else:
@@ -117,7 +117,7 @@ class CanvasToyServer(BaseHTTPRequestHandler):
             img = Image.open(img_bytes)
             img.verify()
             print("Valid image.")
-            return Image.open(img_bytes), body_suffix
+            return Image.open(img_bytes)
 
         except:
             print(f"{datetime.datetime.now()} Invalid body from {self.client_address[0]}")
@@ -192,7 +192,7 @@ class CanvasToyServer(BaseHTTPRequestHandler):
 
         return img
 
-    def send_image_on_discord_webhook(self, webhook_path, img, img_base64, timestamp) -> int:
+    def send_image_on_discord_webhook(self, webhook_path, img, img_UUID) -> int:
 
         boundary = f'------Boundary{uuid4().hex}'
 
@@ -204,7 +204,7 @@ class CanvasToyServer(BaseHTTPRequestHandler):
         f'Content-Type: application/json\r\n\r\n' + \
         f'{payload_json}\r\n' + \
         f'--{boundary}\r\n' + \
-        f'Content-Disposition: form-data; name="file"; filename="{str(timestamp).replace(":", ".")} {img_base64[:16]}.png"\r\n' + \
+        f'Content-Disposition: form-data; name="file"; filename="{img_UUID}.png"\r\n' + \
         f'Content-Type: application/octet-stream\r\n\r\n'
 
         img_bytes = BytesIO()
