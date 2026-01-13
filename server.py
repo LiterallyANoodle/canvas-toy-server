@@ -71,7 +71,9 @@ class CanvasToyServer(BaseHTTPRequestHandler):
 
         # add to database
         try:
-            img_UUID = self.insert_db(timestamp, '127.0.0.1')
+            forwarded_ip = self.headers.get('X-Forwarded-For')
+            client_ip = forwarded_ip if forwarded_ip else self.client_address[0]
+            img_UUID = self.insert_db(timestamp, client_ip)
         except Exception as e:
             print(type(e))
             print(e)
