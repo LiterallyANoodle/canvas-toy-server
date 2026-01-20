@@ -12,6 +12,7 @@ import json
 from uuid import uuid4
 import http.client
 import psycopg2
+import signal
 
 class ServerConfiguration:
 
@@ -231,12 +232,16 @@ class CanvasToyServer(BaseHTTPRequestHandler):
         conn.close()
 
         return response.status
+    
+def sigterm_handler(_signo, _stackframe):
+    exit(0)
 
 if __name__ == "__main__":
     config = ServerConfiguration().configuration
     request_history = []
     web_server = HTTPServer((config['host_name'], config['server_port']), CanvasToyServer)
     print(f"Server started http://{config['host_name']}:{config['server_port']}")
+    signal.signal(signal.SIGTERM, sigterm_handler)
 
     try:
         web_server.serve_forever()
