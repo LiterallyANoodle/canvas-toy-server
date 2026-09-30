@@ -1,0 +1,8 @@
+# Runtime (pinned to the versions tested)
+fastapi==0.142.1
+starlette==1.7.0
+uvicorn==0.54.0
+pillow==12.3.0
+psycopg[binary]==3.3.6
+psycopg-pool==3.3.3
+httpx==0.28.1

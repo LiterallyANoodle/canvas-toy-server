@@ -1,3 +1,6 @@
-.venv
-saved_images
 configuration.json
+saved_images
+.venv
+.env
+__pycache__/
+*.pyc

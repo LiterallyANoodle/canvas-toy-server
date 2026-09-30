@@ -1,0 +1,5 @@
+.git
+legacy
+tests
+**/__pycache__
+.env

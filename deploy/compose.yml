@@ -1,0 +1,21 @@
+# Dragon Mail for Coyote's /etc/docker/containers/docker-compose.yml (T-0049).
+# Paste the service in. Needs, in the compose .env:
+#   DRAGONMAIL_DB_PASSWORD=...   (the dragonmail role's password, set in psql)
+#   DRAGONMAIL_DISCORD_WEBHOOK=https://discord.com/api/webhooks/...   (optional)
+# One-time: mkdir -p /dragon_pool/media/dragon-mail/images && chown 10001:10001 /dragon_pool/media/dragon-mail/images
+# Caddy: <your hostname> { reverse_proxy dragon-mail:8000 }
+services:
+  dragon-mail:
+    image: ghcr.io/literallyanoodle/dragon-mail:latest
+    container_name: dragon-mail
+    restart: unless-stopped
+    depends_on: [postgres]
+    networks: [caddy]          # no published ports: only Caddy reaches it
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=dragonmail
+      - DB_USER=dragonmail
+      - DB_PASSWORD=${DRAGONMAIL_DB_PASSWORD}
+      - DISCORD_WEBHOOK_URL=${DRAGONMAIL_DISCORD_WEBHOOK}
+    volumes:
+      - /dragon_pool/media/dragon-mail/images:/data/images

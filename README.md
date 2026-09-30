@@ -1,22 +1,38 @@
-# canvas-toy-server
+# Dragon Mail (canvas-toy-server)
 
-Using python 3.12
+A little canvas toy: people draw on a web page and send the drawing to me. The drawing
+is saved, numbered, and forwarded to Discord.
 
-Recommend using a virtual environment.
+This repo is the whole thing now: the drawing page (`app/static/draw.html`, web-1.0
+look and all), the server, and the gallery. The original prototypes live on under
+`legacy/` (`legacy/server` is this repo's first version; `legacy/gallery` was merged
+in from `canvas-toy-gallery` with its history).
 
-Install packages with `pip install -r requirements.txt`.
+## What it serves
 
-## Configuration
-```json
-{
-    "host_name": "localhost", // domain of the server
-    "server_port": 6969, // port the server will serve on
-    "max_height": 500, // submitted image height
-    "max_width": 500, // submitted image width
-    "allowed_image_type": "PNG", // allowed image types (Note: not tested with anything other than PNG)
-    "saved_images_path": "./saved_images", // path to save received images on
-    "webhook_path": "", // path following discord.com on the webhook URL. starting at the /
-    "global_rate_period": 3600, // how long to wait in seconds before removing old request timestamps from active history
-    "global_rate_limit": 100 // how many requests can be received in a period before being rate limited 
-}
+| | |
+|---|---|
+| `GET /draw` | the drawing page |
+| `POST /submit` | the page's canvas as a `data:image/png;base64,...` body |
+| `GET /dragon-gallery/image/{n}` | JSON for drawing number *n* |
+| `GET /images/{uuid}.png` | a saved drawing |
+| `GET /healthz` | ok if the app can reach its database |
+
+Coming next: an image-board-style gallery, anonymous comments, and an admin page
+with timed IP bans.
+
+## Running it
+
+It runs as a container (`ghcr.io/literallyanoodle/dragon-mail`, built by GitHub
+Actions from `master`) next to Postgres. See `deploy/compose.yml` and `.env.example`.
+
+Behind Cloudflare, the client's IP is taken from `CF-Connecting-IP` only, never from
+`X-Forwarded-For`, which anyone can fake.
+
+## Developing
+
+```sh
+python3.12 -m venv .venv && . .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest                                # the database tests need TEST_DATABASE_URL
 ```
