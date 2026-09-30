@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="utf-8">
+	<title>Epic Mode</title>
+
+    <link rel="preload" href="Assets/fonts/Ciircuit-Regular.ttf" as="font" />
+    <link rel="preload" href="Assets/wolf-on-black-background.jpg" as="image" />
+
+    <style type="text/css">
+
+        @font-face {
+			font-family: "Ciircuit";
+			src: url(Assets/fonts/Ciircuit-Regular.ttf) format("truetype");
+		}
+
+        body {
+            background: url(Assets/wolf-on-black-background.jpg) fixed;
+            font-family: Ciircuit;
+	    overscroll-behavior: none;
+        }
+
+        canvas {
+            background-color: white;
+	    touch-action: none;
+	    overscroll-behavior: none;
+        }
+
+        .center {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+	    flex-direction: column;
+        }
+
+        .canv-container canvas {
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: stretch;
+            column-gap: 0px;
+            border: 2px solid;
+            border-color: purple;
+        }
+
+	.info-container {
+	    width: 500px;
+	    color: white;
+	    font-family: "Times New Roman";
+	    flex-direction: column;
+	    justify-content: flex-start;
+	    background-color: rgb(15, 46, 61);
+	    margin: 20px;
+	    padding: 10px;
+	    box-sizing: border-box;
+	}
+
+        .canv-container canvas:hover {
+            cursor: crosshair;
+        }
+
+        .button-container {
+            display: flex;
+            justify-content: center;
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .button-container button {
+            all: unset;
+            padding: 5px;
+            margin: 1px;
+            text-align: center;
+            color: rgb(129, 5, 53);
+            background: linear-gradient(0deg, rgba(34,193,195,1) 0%, rgb(45, 253, 97) 100%);
+            border: 2px solid;
+            border-color: purple;
+            user-select: none;
+        }
+
+        .button-container button:hover {
+            cursor: pointer;
+            background: linear-gradient(0deg, rgb(121, 253, 45) 0%, rgba(34,193,195,1) 100%);
+            color: rgb(211, 22, 195);
+        }
+
+        .color-button {
+            display: flex;
+            justify-content: center;
+            align-items: stretch;
+            background-color: black;
+            padding: 5px;
+            margin: 1px;
+            border: 2px solid;
+            border-color: purple;
+            user-select: none;
+            text-align: center;
+	    position: relative;
+        }
+
+        .color-button label {
+            flex-grow: 1;
+            background-color: black;
+            text-shadow:
+               -1px -1px 0 white,
+                1px -1px 0 white,
+               -1px 1px 0 white,
+                1px 1px 0 white;
+            color: black;
+            cursor: pointer;
+            margin: 0px;
+            padding: 0px;
+        }
+
+        .color-button input {
+            position: absolute;
+            top: 0;
+	    left: 0; 
+	    width: 100%;
+	    height: 100%;
+	    opacity: 0;
+	    padding: 0;
+	    margin: 0;
+	    border: none;
+	    cursor: pointer;
+	    z-index: 10;
+        }
+
+    </style>
+
+    <script type="text/javascript">
+
+        var canvas, ctx, w, h = null;
+        var colorPicker;
+        var paintbrush = {
+            prevX: 0,
+            prevY: 0,
+            currX: 0,
+            currY: 0,
+            color: "#000000",
+            thickness: 2,
+            drawing: false,
+            eraseMode: false,
+        }
+        var drawHistory = [];
+        var drawFuture = [];
+        var currentImg = null;
+        var undoDepth = 0;
+        var redoDepth = 0;
+        var eraseJobs = [];
+
+        function getBrushPosition(action, event) {
+
+            let mX
+            let mY
+
+		    if (event.touches != null && event.touches.length > 0) {
+                mX = event.touches[0].clientX
+                mY = event.touches[0].clientY
+            } else {
+                mX = event.clientX
+                mY = event.clientY
+            }
+
+
+            const canvBound = canvas.getBoundingClientRect();
+            if (action == 'down') {
+                paintbrush.prevX = paintbrush.currX;
+                paintbrush.prevY = paintbrush.currY;
+                paintbrush.currX = mX - canvBound.left;
+                paintbrush.currY = mY - canvBound.top;
+
+                paintbrush.drawing = true; 
+
+                // set stroke 
+                ctx.strokeStyle = paintbrush.color;
+                ctx.lineWidth = paintbrush.thickness;
+                ctx.lineCap = "round";
+                ctx.lineJoin = "round";
+
+                if (paintbrush.eraseMode) {
+                    // Single click erases a square
+                    ctx.beginPath();
+                    ctx.clearRect(
+                        paintbrush.currX - paintbrush.thickness / 2, 
+                        paintbrush.currY - paintbrush.thickness / 2,
+                        paintbrush.thickness,
+                        paintbrush.thickness
+                    )
+                } else {
+                    // Single click draws a dot
+                    ctx.beginPath();
+                    ctx.ellipse(paintbrush.currX, paintbrush.currY, paintbrush.thickness / 2, paintbrush.thickness / 2, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.closePath();
+                }
+
+                ctx.beginPath();
+            }
+            if (action == 'up' || action == 'out') {
+                if (paintbrush.drawing) {
+                    ctx.closePath();
+                    if (paintbrush.eraseMode) {
+                        eraseProcess();
+                    }
+                    // save state for undo
+                    drawHistory.push(currentImg);
+                    undoDepth++;
+                    currentImg = ctx.getImageData(0, 0, w, h);
+                    drawFuture = [];
+                    redoDepth = 0;
+                }
+                paintbrush.drawing = false; 
+            }
+            if (action == 'move') {
+                if (paintbrush.drawing) {
+                    paintbrush.prevX = paintbrush.currX;
+                    paintbrush.prevY = paintbrush.currY;
+                    paintbrush.currX = mX - canvBound.left;
+                    paintbrush.currY = mY - canvBound.top;
+                    if (paintbrush.eraseMode) {
+                        erase();
+                        eraseProcess();
+                    } else {
+                        draw();   
+                    }
+                }
+            }
+        }
+
+        function draw() {
+	    ctx.strokeStyle = paintbrush.color;
+            ctx.moveTo(paintbrush.prevX, paintbrush.prevY);
+            ctx.lineTo(paintbrush.currX, paintbrush.currY); 
+            ctx.stroke();
+        }
+
+        function erase() {
+            // no built-in method to erase in a line, so we loop
+            var lowX = (paintbrush.currX < paintbrush.prevX) ? paintbrush.currX : paintbrush.prevX;
+            var highX = (paintbrush.currX > paintbrush.prevX) ? paintbrush.currX : paintbrush.prevX;
+            var lowY = (paintbrush.currY < paintbrush.prevY) ? paintbrush.currY : paintbrush.prevY;
+            var highY = (paintbrush.currY > paintbrush.prevY) ? paintbrush.currY : paintbrush.prevY;
+            eraseJobs.push([lowX, highX, lowY, highY]);
+        }
+
+        function eraseProcess() {
+            var currJob = null;
+            while (eraseJobs.length > 0) {
+                currJob = eraseJobs.pop();
+                for (var x = currJob[0]; x < currJob[1]; x++) {
+                    for (var y = currJob[2]; y < currJob[3]; y++) {
+                        ctx.clearRect(
+                            x - paintbrush.thickness / 2, 
+                            y - paintbrush.thickness / 2,
+                            paintbrush.thickness,
+                            paintbrush.thickness
+                        )
+                    }
+                }
+            }
+        }
+
+        function undoDraw() {
+            if (undoDepth > 0) {
+                ctx.clearRect(0, 0, w, h);
+                drawFuture.push(currentImg);
+                currentImg = drawHistory.pop();
+                ctx.putImageData(currentImg, 0, 0);
+                undoDepth--;
+                redoDepth++;
+            }
+        }
+
+        function redoDraw() {
+            if (redoDepth > 0) {
+                ctx.clearRect(0, 0, w, h);
+                drawHistory.push(currentImg);
+                currentImg = drawFuture.pop();
+                ctx.putImageData(currentImg, 0, 0);
+                undoDepth++;
+                redoDepth--;
+            }
+        }
+
+        function clearCanvas() {
+            var confirm = window.confirm("Are you sure you want to clear the canvas?");
+            if (confirm) {
+                ctx.clearRect(0, 0, w, h);
+                drawHistory = [];
+            }
+        }
+
+        function toggleErase() {
+            paintbrush.eraseMode = !paintbrush.eraseMode;
+            document.getElementById("eraser").textContent = paintbrush.eraseMode ? "Eraser ON" : "Eraser OFF";
+        }
+
+        function increaseThickness() {
+            paintbrush.thickness++;
+        }
+
+        function decreaseThickness() {
+            if (paintbrush.thickness > 1) {
+                paintbrush.thickness--;
+            }
+        }
+
+        function setBrushColor(event) {
+            paintbrush.color = event.target.value;
+            document.getElementById("color-picker-label").style.backgroundColor = event.target.value;
+            document.getElementById("color-picker-div").style.backgroundColor = event.target.value;
+        }
+
+        function init() {
+            canvas = document.getElementById("canv");
+            ctx = canvas.getContext("2d");
+            w = canvas.width;
+            h = canvas.height; 
+
+            // save initial state for undo/redo
+            currentImg = ctx.getImageData(0, 0, w, h);
+
+            // desktop mouse 
+            canvas.addEventListener("mousemove", (e) => {
+                getBrushPosition('move', e);
+            }, false);
+            canvas.addEventListener("mousedown", (e) => {
+                getBrushPosition('down', e);
+            }, false);
+            canvas.addEventListener("mouseup", (e) => {
+                getBrushPosition('up', e);
+            }, false);
+            canvas.addEventListener("mouseout", (e) => {
+                getBrushPosition('out', e);
+            }, false);
+
+            // mobile compatibility
+            canvas.addEventListener("touchmove", (e) => {
+                getBrushPosition('move', e);
+	        }, { passive: false, capture: true });
+            canvas.addEventListener("touchstart", (e) => {
+
+                // mobile compatibility 
+                if (event.target == document.getElementById("canv")) {
+                    event.preventDefault();
+                }
+
+                getBrushPosition('down', e);
+	        }, { passive: false, capture: true });
+            canvas.addEventListener("touchend", (e) => {
+                getBrushPosition('up', e);
+	        }, { passive: false, capture: true });
+
+            colorPicker = document.getElementById("color-picker");
+            document.getElementById("color-picker-div").addEventListener("touchstart", () => {
+                colorPicker.click()
+            }, false); // mobile
+            colorPicker.value = paintbrush.color;
+            colorPicker.addEventListener("change", setBrushColor, false);
+        }
+
+        async function sendImage() {
+            const response = await fetch("https://localhost:6969/submit", {
+                method: "POST",
+                body: document.getElementById("canv").toDataURL(),
+                headers: {
+                    "Content-type": "text/html; charset=UTF-8"
+                }
+            })
+            .then((response) => {
+                const time = Date.now();
+                response.text().then((text) => {
+                    console.log(`${new Date(time).toISOString()} Server Response: ${response.status} --- ${text}`);
+                    window.alert(`Message from server:\n${text}`)
+                });
+            });
+        }
+
+    </script>
+
+</head>
+<body onload="init()">
+    <div class="center">
+        <div class="canv-container">
+            <canvas id="canv" width="500" height="500"></canvas>
+            <div class="button-container">
+                <button class="send-button" type="button" onclick="sendImage()">Send me your gorgeous art, beautiful.....</button>
+                <button class="clear-button" type="button" onclick="clearCanvas()">Destroy it all</button>
+                <button class="inc-thick-button" type="button" onclick="increaseThickness()">bigger brush</button>
+                <button class="dec-thick-button" type="button" onclick="decreaseThickness()">smaller brush</button>
+                <div id="color-picker-div" class="color-button">
+                    <label id="color-picker-label" for="color-picker">Color</label>
+                    <input id="color-picker" type="color"/>
+                </div>
+                <button id="eraser" class="erase-toggle-button" type="button" onclick="toggleErase()">Eraser OFF</button>
+                <button class="undo-button" type="button" onclick="undoDraw()">UNDO</button>
+                <button class="redo-button" type="button" onclick="redoDraw()">REDO</button>
+            </div>
+        </div>
+	<div class="info-container">
+	    <h1>Info</h1>
+	    <h2>Huh? What is this?</h2>
+	    <p>This is a little canvas toy I made so you can send me drawings.</p>
+	    <h2>But doesn't strawpage already do that? Why did you make this?</h2>
+	    <ol>
+	        <li>It's fun.</li>
+	        <li>Strawpage deletes the images once you view them unless you pay for their premium version, and I think that's lame.</li>
+	    </ol>
+	    <p>Also mine's cooler because it has a redo button, and it sends things on discord webhooks. Mine also works* on mobile.</p>
+	    <h2>It doesn't work on Safari 26.</h2>
+	    <p>The safari devs are evil and hate me and you both. Use a different mobile browser.</p>
+	    <h2>I got a message back saying it failed to save the image. Did something go wrong?</h2>
+	    <p>No, I just don't have saving to disk enabled right now. As long as it says it got sent to discord, I will have your image.</p> 
+	    <h2>So this is on your server? Are you stealing my ip? You hacker. You evil fucking hacker I'm gonna tell on you.</h2>
+	    <p>No, this is proxied through cloudflare so I can't see your ip (and you can't see mine). Also if you're worried about anything else, you can press F12 to view the page source and the server source code can be viewed over <a href="https://github.com/LiterallyANoodle/canvas-toy-server">here</a>.</p>
+	    <h2>Can I use this?</h2>
+	    <p>Sure, you can copy it for yourself, but do not ask for help in deploying it. ( You're a big boy, you can figure it out :] )</p>
+	</div>
+	<div class="info-container">
+	    <h2>Last Updated December 6, 2025</h2>
+	</div>
+    </div>
+</body>
