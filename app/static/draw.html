@@ -360,7 +360,7 @@
         }
 
         async function sendImage() {
-            const response = await fetch("https://localhost:6969/submit", {
+            const response = await fetch("/submit", {
                 method: "POST",
                 body: document.getElementById("canv").toDataURL(),
                 headers: {
