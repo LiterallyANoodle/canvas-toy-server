@@ -38,6 +38,10 @@ class Settings:
     # through the tunnel). X-Forwarded-For is deliberately NOT trusted: any client
     # can send it.
     client_ip_header: str = field(default_factory=lambda: os.environ.get("CLIENT_IP_HEADER", "CF-Connecting-IP"))
+    # Refuse submissions that don't carry a valid client-IP header (D-0006 #4). Without it,
+    # every client that bypasses Cloudflare would share the proxy's address as its "IP".
+    require_client_ip_header: bool = field(
+        default_factory=lambda: os.environ.get("REQUIRE_CLIENT_IP_HEADER", "1").strip() not in ("0", "false", "no"))
 
     @property
     def conninfo(self) -> str:

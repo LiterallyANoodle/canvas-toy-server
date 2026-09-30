@@ -17,15 +17,28 @@ class RateLimiter:
         self._clock = clock
         self._all: deque[float] = deque()
         self._by_ip: dict[str, deque[float]] = defaultdict(deque)
+        self._calls = 0
 
     def _trim(self, q: deque[float], now: float) -> None:
         while q and q[0] <= now - self.period:
             q.popleft()
 
+    def sweep(self, now: float | None = None) -> None:
+        """Drop IPs whose windows are empty, so memory tracks recent clients only (D-0006 #6)."""
+        now = self._clock() if now is None else now
+        for ip in list(self._by_ip):
+            q = self._by_ip[ip]
+            self._trim(q, now)
+            if not q:
+                del self._by_ip[ip]
+
     def allow(self, ip: str) -> bool:
         """Record and allow the request, or refuse it without recording (a refused request
         doesn't extend anyone's wait)."""
         now = self._clock()
+        self._calls += 1
+        if self._calls % 256 == 0:
+            self.sweep(now)
         self._trim(self._all, now)
         mine = self._by_ip[ip]
         self._trim(mine, now)

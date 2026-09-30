@@ -65,7 +65,13 @@ def create_app(settings: Settings | None = None, drawings=None, webhook=send_to_
     @app.post("/submit")
     async def submit(request: Request):
         ip = client_ip(request.headers, request.client.host if request.client else None,
-                       settings.client_ip_header)
+                       settings.client_ip_header, settings.require_client_ip_header)
+        if ip is None:
+            return PlainTextResponse("Something went wrong. Please try again later.\n", status_code=400)
+        # Before reading the body (D-0006 #5): a limited client costs no read, no buffer.
+        if not limiter.allow(ip):
+            return PlainTextResponse("Too many drawings right now! Please wait a while and try again.\n",
+                                     status_code=429)
         # The size cap is enforced while reading, so an oversized body is never held whole.
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > settings.max_body_bytes:
@@ -75,10 +81,6 @@ def create_app(settings: Settings | None = None, drawings=None, webhook=send_to_
             body += chunk
             if len(body) > settings.max_body_bytes:
                 return PlainTextResponse("That drawing is too big.\n", status_code=413)
-
-        if not limiter.allow(ip):
-            return PlainTextResponse("Too many drawings right now! Please wait a while and try again.\n",
-                                     status_code=429)
 
         try:
             img = images.decode(bytes(body), settings.max_width, settings.max_height)

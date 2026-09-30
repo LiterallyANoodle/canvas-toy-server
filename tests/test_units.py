@@ -121,3 +121,18 @@ def test_refused_requests_do_not_extend_the_wait():
     assert not rl.allow("a")
     c.t = 61
     assert rl.allow("a")
+
+
+def test_sweep_forgets_idle_ips():
+    c = Clock()
+    rl = RateLimiter(period_s=60, global_limit=10_000, per_ip_limit=5, clock=c)
+    for i in range(50):
+        rl.allow(f"10.0.0.{i}")
+    c.t = 61
+    rl.sweep()
+    assert rl._by_ip == {}, "memory tracks recent clients only"
+
+
+def test_client_ip_can_require_the_header():
+    assert client_ip({}, "172.18.0.5", "CF-Connecting-IP", require_header=True) is None
+    assert client_ip({"CF-Connecting-IP": "garbage"}, "172.18.0.5", "CF-Connecting-IP", require_header=True) is None

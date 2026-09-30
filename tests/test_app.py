@@ -151,3 +151,23 @@ def test_healthz_reflects_the_database(make):
     assert client.get("/healthz").json() == {"ok": True}
     client2, *_ = make(drawings=FakeDrawings(fail=True))
     assert client2.get("/healthz").status_code == 503
+
+
+# --- D-0006 review fixes -------------------------------------------------
+def test_a_submission_without_the_client_ip_header_is_refused(make):
+    # Otherwise every client bypassing Cloudflare would share the proxy's IP.
+    client, drawings, *_ = make()
+    r = client.post("/submit", content=data_url(canvas_like()))
+    assert r.status_code == 400 and drawings.rows == {}
+
+
+def test_the_header_requirement_can_be_turned_off(make):
+    client, drawings, *_ = make(require_client_ip_header=False)
+    assert client.post("/submit", content=data_url(canvas_like())).status_code == 200
+
+
+def test_rate_limit_is_checked_before_the_body_is_read(make):
+    # A limited client sending an oversized body gets 429, not 413: the body was never read.
+    client, *_ = make(rate_limit_per_ip=1, max_body_bytes=1000)
+    assert submit(client, b"data:image/png;base64,AAAA").status_code == 400   # uses the one slot
+    assert submit(client, b"A" * 5000).status_code == 429
