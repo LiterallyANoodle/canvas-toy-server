@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dragon Mail admin</title>
+    <style>
+        body { font-family: sans-serif; background: #111; color: #ddd; margin: 0 auto; max-width: 1000px; padding: 0 16px 40px; }
+        h1, h2 { color: gold; }
+        a { color: gold; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border-bottom: 1px solid #333; padding: 6px; text-align: left; vertical-align: top; }
+        img.thumb { width: 80px; height: 80px; object-fit: contain; background: white; }
+        .hidden { opacity: 0.5; }
+        .tag { font-size: 0.8em; padding: 1px 5px; border: 1px solid #888; }
+        .body { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 420px; }
+        form.inline { display: inline; }
+        button { background: #222; color: gold; border: 1px solid gold; cursor: pointer; margin: 1px; }
+        button.danger { color: #f88; border-color: #f88; }
+        .notice { background: #222; border-left: 4px solid gold; padding: 8px; }
+        .who { color: #999; font-size: 0.9em; }
+        input, select { background: #222; color: #ddd; border: 1px solid #555; }
+        .pager { margin: 8px 0; }
+    </style>
+</head>
+<body>
+    <h1>Dragon Mail admin</h1>
+    <p class="who">Signed in as {{ admin }} &middot; <a href="/dragon-gallery">gallery</a> &middot;
+        <a href="#drawings">drawings</a> &middot; <a href="#comments">comments</a> &middot; <a href="#bans">bans</a></p>
+    {% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
+
+    {% macro ban_form(ip) -%}
+    <form class="inline" method="post" action="/admin/bans">
+        <input type="hidden" name="network" value="{{ ip }}">
+        <select name="duration">{% for key, label in durations %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select>
+        <select name="scope"><option value="all">from everything</option><option value="comment">from commenting</option><option value="draw">from drawing</option></select>
+        <button>Ban {{ ip }}</button>
+    </form>
+    {%- endmacro %}
+
+    <h2 id="drawings">Drawings</h2>
+    <table>
+        <tr><th></th><th>#</th><th>When (UTC)</th><th>IP</th><th>Comments</th><th>Actions</th></tr>
+        {% for d in drawings %}
+        <tr class="{{ 'hidden' if d.hidden }}">
+            <td><a href="/admin/images/{{ d.id }}.png"><img class="thumb" src="/admin/images/{{ d.id }}.png" alt=""></a></td>
+            <td>{% if d.hidden %}{{ d.number }} <span class="tag">hidden</span>{% else %}<a href="/dragon-gallery/image/{{ d.number }}">{{ d.number }}</a>{% endif %}</td>
+            <td>{{ d.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+            <td>{{ d.ip or "—" }}</td>
+            <td>{{ d.comment_count }}</td>
+            <td>
+                <form class="inline" method="post" action="/admin/drawings/{{ d.id }}/{{ 'unhide' if d.hidden else 'hide' }}"><button>{{ 'Unhide' if d.hidden else 'Hide' }}</button></form>
+                <form class="inline" method="post" action="/admin/drawings/{{ d.id }}/delete" onsubmit="return confirm('Delete drawing #{{ d.number }} and its comments for good?')"><button class="danger">Delete</button></form>
+                {% if d.ip %}<br>{{ ban_form(d.ip) }}{% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">No drawings yet.</td></tr>
+        {% endfor %}
+    </table>
+    <p class="pager">{% if dpage > 0 %}<a href="?dpage={{ dpage - 1 }}&cpage={{ cpage }}#drawings">&larr; newer</a>{% endif %}
+        {% if drawings|length == page_size %}<a href="?dpage={{ dpage + 1 }}&cpage={{ cpage }}#drawings">older &rarr;</a>{% endif %}</p>
+
+    <h2 id="comments">Comments</h2>
+    <table>
+        <tr><th>On</th><th>When (UTC)</th><th>Comment</th><th>IP</th><th>Actions</th></tr>
+        {% for c in comments %}
+        <tr class="{{ 'hidden' if c.hidden }}">
+            <td><a href="/dragon-gallery/image/{{ c.drawing_number }}">#{{ c.drawing_number }}</a></td>
+            <td>{{ c.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+            <td class="body">{{ c.body }}{% if c.hidden %} <span class="tag">hidden</span>{% endif %}</td>
+            <td>{{ c.ip }}</td>
+            <td>
+                <form class="inline" method="post" action="/admin/comments/{{ c.id }}/{{ 'unhide' if c.hidden else 'hide' }}"><button>{{ 'Unhide' if c.hidden else 'Hide' }}</button></form>
+                <form class="inline" method="post" action="/admin/comments/{{ c.id }}/delete" onsubmit="return confirm('Delete this comment for good?')"><button class="danger">Delete</button></form>
+                <br>{{ ban_form(c.ip) }}
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5">No comments yet.</td></tr>
+        {% endfor %}
+    </table>
+    <p class="pager">{% if cpage > 0 %}<a href="?dpage={{ dpage }}&cpage={{ cpage - 1 }}#comments">&larr; newer</a>{% endif %}
+        {% if comments|length == page_size %}<a href="?dpage={{ dpage }}&cpage={{ cpage + 1 }}#comments">older &rarr;</a>{% endif %}</p>
+
+    <h2 id="bans">Bans</h2>
+    <p class="who">Bans are timeouts: each one ends by itself. An address or a range (e.g. 203.0.113.0/24).</p>
+    <table>
+        <tr><th>Who</th><th>From</th><th>Until (UTC)</th><th>Reason</th><th></th></tr>
+        {% for b in bans %}
+        <tr>
+            <td>{{ b.network }}</td>
+            <td>{{ {'all': 'everything', 'draw': 'drawing', 'comment': 'commenting'}[b.scope] }}</td>
+            <td>{{ b.expires_at.strftime("%Y-%m-%d %H:%M") }}</td>
+            <td>{{ b.reason }}</td>
+            <td><form class="inline" method="post" action="/admin/bans/{{ b.id }}/lift"><button>Lift</button></form></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5">No active bans.</td></tr>
+        {% endfor %}
+    </table>
+    <h3>New ban</h3>
+    <form method="post" action="/admin/bans">
+        <input name="network" placeholder="IP or range" required>
+        <select name="duration">{% for key, label in durations %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select>
+        <select name="scope"><option value="all">from everything</option><option value="comment">from commenting</option><option value="draw">from drawing</option></select>
+        <input name="reason" placeholder="reason (only you see it)" maxlength="200">
+        <button>Ban</button>
+    </form>
+</body>
+</html>

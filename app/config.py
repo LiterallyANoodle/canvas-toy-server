@@ -43,8 +43,32 @@ class Settings:
     require_client_ip_header: bool = field(
         default_factory=lambda: os.environ.get("REQUIRE_CLIENT_IP_HEADER", "1").strip() not in ("0", "false", "no"))
 
+    # Comments: length cap and their own rate limits (separate from drawings).
+    comment_max_chars: int = field(default_factory=lambda: _int("COMMENT_MAX_CHARS", 500))
+    comment_rate_period_s: int = field(default_factory=lambda: _int("COMMENT_RATE_PERIOD_S", 600))
+    comment_rate_limit_global: int = field(default_factory=lambda: _int("COMMENT_RATE_LIMIT_GLOBAL", 60))
+    comment_rate_limit_per_ip: int = field(default_factory=lambda: _int("COMMENT_RATE_LIMIT_PER_IP", 5))
+
+    # Where the site lives publicly, e.g. https://canvas.noodledragon.fans. Used for the
+    # gallery link in the Discord message; empty = no link.
+    public_base_url: str = field(default_factory=lambda: os.environ.get("PUBLIC_BASE_URL", "").rstrip("/"))
+
+    # /admin sits behind Cloudflare Access, and the app checks Access's signed token itself
+    # (so reaching the container without going through Access can't open it). Both of these
+    # must be set or /admin is switched off. ADMIN_EMAILS optionally narrows who gets in.
+    cf_access_team_domain: str = field(default_factory=lambda: os.environ.get("CF_ACCESS_TEAM_DOMAIN", "")
+                                       .strip().removeprefix("https://").rstrip("/"))
+    cf_access_aud: str = field(default_factory=lambda: os.environ.get("CF_ACCESS_AUD", "").strip())
+    admin_emails: frozenset[str] = field(default_factory=lambda: frozenset(
+        e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()))
+
+    @property
+    def admin_enabled(self) -> bool:
+        return bool(self.cf_access_team_domain and self.cf_access_aud)
+
     @property
     def conninfo(self) -> str:
         from psycopg.conninfo import make_conninfo
         return make_conninfo(host=self.db_host, port=self.db_port, dbname=self.db_name,
-                             user=self.db_user, password=self.db_password)
+                             user=self.db_user, password=self.db_password,
+                             options="-c TimeZone=UTC")             # pages show times as UTC

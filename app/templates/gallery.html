@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+{#- The operator's gallery page (legacy/gallery/gallery.html), with the drawing in the frame and comments underneath. -#}
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% if drawing %}Dragon Gallery #{{ drawing.number }}{% else %}Dragon Gallery{% endif %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&display=swap" rel="stylesheet">
+
+    <style>
+
+        body {
+			color: lightgray;
+			max-width: 100%;
+			background: url(/Assets/white_marble.jpg);
+			image-rendering: crisp-edges;
+		}
+
+        .container {
+            width: 100%;
+			max-width: 700px;
+			justify-content: center;
+            text-align: center;
+			margin: 0 auto;
+			height: auto;
+		}
+
+        .container div {
+            margin: 5px;
+        }
+
+        .title {
+            font-family: "UnifrakturMaguntia", cursive;
+            font-weight: 400;
+            font-style: normal;
+            color: gold;
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+            background-color: black;
+        }
+
+        .title a { color: gold; text-decoration: none; }
+
+        .frame {
+            max-width: 100%;
+            height: 100%;
+        }
+
+        /* The drawing sits in the frame's opening (x 99-799, y 85-813 of the 900x900 PNG). */
+        .framed {
+            position: relative;
+            display: inline-block;
+            max-width: 100%;
+            line-height: 0;
+        }
+
+        .framed .opening {
+            position: absolute;
+            left: 11%;
+            top: 9.4%;
+            width: 78%;
+            height: 81%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .framed .opening.standard { background: white; }
+
+        /* width is set per drawing: 100% for the standard canvas, less for a smaller one */
+        .framed .drawing {
+            max-width: 100%;
+            max-height: 100%;
+            height: auto;
+            object-fit: contain;
+            image-rendering: auto;
+        }
+
+        .framed .frame { position: relative; }
+
+        .plaque, .nav, .comments, .message {
+            background-color: black;
+            padding: 8px;
+        }
+
+        .plaque { font-family: "UnifrakturMaguntia", cursive; color: gold; font-size: 1.4em; }
+
+        .nav { display: flex; justify-content: space-between; }
+        .nav a { color: gold; }
+        .nav .off { color: #555; }
+
+        .comments { text-align: left; }
+        .comments h2 { font-family: "UnifrakturMaguntia", cursive; font-weight: 400; color: gold; margin: 4px 0 8px; }
+        .comment { border-top: 1px dotted #666; padding: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .comment .who { color: gold; font-size: 0.85em; }
+        .none { color: #999; font-style: italic; }
+
+        form textarea { width: 100%; box-sizing: border-box; background: #111; color: lightgray; border: 1px solid gold; font: inherit; }
+        form button { background: black; color: gold; border: 1px solid gold; padding: 4px 12px; cursor: pointer; }
+        .trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+        .message { color: gold; }
+        .message.bad { color: #f88; }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="content">
+            <div class="title">
+                <img src="/Assets/sword3.gif" style="transform: scaleX(-1);" alt="">
+                <h1><a href="/dragon-gallery">Dragon Gallery</a></h1>
+                <img src="/Assets/sword3.gif" alt="">
+            </div>
+            {% if drawing %}
+            <div>
+                <span class="framed">
+                    <span class="opening{% if standard %} standard{% endif %}"><img class="drawing" style="width: {{ scale_pct }}%" src="/images/{{ drawing.id }}.png" alt="Drawing #{{ drawing.number }}"></span>
+                    <img class="frame" src="/Assets/Square-Gold-Frame-PNG-908289183.png" alt="">
+                </span>
+            </div>
+            <div class="plaque">No. {{ drawing.number }} &middot; {{ drawing.created_at.strftime("%-d %B %Y") }}</div>
+            <div class="nav">
+                {% if prev %}<a href="/dragon-gallery/image/{{ prev }}">&larr; older</a>{% else %}<span class="off">&larr; older</span>{% endif %}
+                <a href="/draw">draw one!</a>
+                {% if next %}<a href="/dragon-gallery/image/{{ next }}">newer &rarr;</a>{% else %}<span class="off">newer &rarr;</span>{% endif %}
+            </div>
+            {% else %}
+            <div class="message">{{ empty_message }}</div>
+            <div class="nav"><span></span><a href="/draw">draw one!</a><span></span></div>
+            {% endif %}
+        </div>
+        {% if drawing %}
+        <div class="comments" id="comments">
+            <h2>Comments</h2>
+            {% if notice %}<div class="message{% if notice_bad %} bad{% endif %}">{{ notice }}</div>{% endif %}
+            {% for c in comments %}
+            <div class="comment"><span class="who">Anonymous &middot; {{ c.created_at.strftime("%Y-%m-%d %H:%M") }} UTC</span>
+{{ c.body }}</div>
+            {% else %}
+            <p class="none">No comments yet.</p>
+            {% endfor %}
+            <form method="post" action="/dragon-gallery/image/{{ drawing.number }}/comments">
+                <textarea name="body" rows="3" maxlength="{{ max_chars }}" required placeholder="Say something nice (anonymously)"></textarea>
+                <div class="trap" aria-hidden="true"><label>Leave this empty <input name="website" tabindex="-1" autocomplete="off"></label></div>
+                <button type="submit">Post</button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

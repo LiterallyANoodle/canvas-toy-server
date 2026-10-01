@@ -1,4 +1,5 @@
-"""The HTTP surface, with a fake repository and a fake Discord (no Postgres needed)."""
+"""The HTTP surface, with fake repositories and a fake Discord (no Postgres needed)."""
+import ipaddress
 import uuid
 from datetime import datetime, timezone
 from io import BytesIO
@@ -8,7 +9,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.config import Settings
-from app.db import Drawing
+from app.db import AdminComment, AdminDrawing, Ban, Comment, Drawing
 from app.main import create_app
 from tests.test_units import canvas_like, data_url
 
@@ -16,24 +17,117 @@ from tests.test_units import canvas_like, data_url
 class FakeDrawings:
     def __init__(self, fail=False):
         self.rows: dict[int, tuple] = {}
+        self.sizes: dict[int, tuple] = {}
         self.fail = fail
 
-    async def add(self, drawing_id, ip, created_at):
+    async def add(self, drawing_id, ip, created_at, width=None, height=None):
         if self.fail:
             raise RuntimeError("db down")
-        number = len(self.rows) + 1
+        number = max(self.rows, default=0) + 1
         self.rows[number] = (drawing_id, ip, created_at, False)
+        self.sizes[number] = (width, height)
         return number
 
     async def by_number(self, number):
         r = self.rows.get(number)
-        return Drawing(r[0], number, r[2]) if r and not r[3] else None
+        return Drawing(r[0], number, r[2], *self.sizes.get(number, (None, None))) if r and not r[3] else None
 
     async def exists_visible(self, drawing_id):
         return any(r[0] == drawing_id and not r[3] for r in self.rows.values())
 
     async def ping(self):
         return not self.fail
+
+    def _visible(self):
+        return sorted(n for n, r in self.rows.items() if not r[3])
+
+    async def neighbours(self, number):
+        vis = self._visible()
+        return (max((n for n in vis if n < number), default=None), min((n for n in vis if n > number), default=None))
+
+    async def first_number(self):
+        return min(self._visible(), default=None)
+
+    async def admin_page(self, limit, offset):
+        out = [AdminDrawing(r[0], n, r[2], r[1], r[3], 0) for n, r in sorted(self.rows.items(), reverse=True)]
+        return out[offset:offset + limit]
+
+    async def exists(self, drawing_id):
+        return any(r[0] == drawing_id for r in self.rows.values())
+
+    def _find(self, drawing_id):
+        return next((n for n, r in self.rows.items() if r[0] == drawing_id), None)
+
+    async def set_hidden(self, drawing_id, hidden):
+        n = self._find(drawing_id)
+        if n is None:
+            return False
+        r = self.rows[n]
+        self.rows[n] = (r[0], r[1], r[2], hidden)
+        return True
+
+    async def delete(self, drawing_id):
+        n = self._find(drawing_id)
+        return self.rows.pop(n, None) is not None if n is not None else False
+
+
+class FakeComments:
+    def __init__(self, drawings):
+        self.drawings, self.rows = drawings, {}
+
+    async def add(self, drawing_id, body, ip, created_at):
+        cid = len(self.rows) + 1
+        self.rows[cid] = dict(drawing_id=drawing_id, body=body, ip=ip, created_at=created_at, hidden=False)
+        return cid
+
+    async def for_drawing(self, drawing_id):
+        return [Comment(i, c["created_at"], c["body"]) for i, c in sorted(self.rows.items())
+                if c["drawing_id"] == drawing_id and not c["hidden"]]
+
+    async def admin_page(self, limit, offset):
+        num = {r[0]: n for n, r in self.drawings.rows.items()}
+        out = [AdminComment(i, num.get(c["drawing_id"], 0), c["created_at"], c["body"], c["ip"], c["hidden"])
+               for i, c in sorted(self.rows.items(), reverse=True)]
+        return out[offset:offset + limit]
+
+    async def set_hidden(self, comment_id, hidden):
+        if comment_id not in self.rows:
+            return False
+        self.rows[comment_id]["hidden"] = hidden
+        return True
+
+    async def delete(self, comment_id):
+        return self.rows.pop(comment_id, None) is not None
+
+
+class FakeBans:
+    def __init__(self):
+        self.rows = {}
+
+    async def active_for(self, ip, scope):
+        now = datetime.now(timezone.utc)
+        for i, b in self.rows.items():
+            if (not b.get("lifted") and b["expires_at"] > now and b["scope"] in ("all", scope)
+                    and ipaddress.ip_address(ip) in ipaddress.ip_network(b["network"])):
+                return Ban(i, b["network"], b["scope"], b["reason"], now, b["expires_at"])
+        return None
+
+    async def add(self, network, scope, expires_at, reason):
+        bid = len(self.rows) + 1
+        self.rows[bid] = dict(network=network, scope=scope, expires_at=expires_at, reason=reason)
+        return bid
+
+    async def active(self):
+        now = datetime.now(timezone.utc)
+        return [Ban(i, b["network"], b["scope"], b["reason"], now, b["expires_at"])
+                for i, b in self.rows.items() if not b.get("lifted") and b["expires_at"] > now]
+
+    async def lift(self, ban_id):
+        b = self.rows.get(ban_id)
+        if b is None or b.get("lifted"):
+            return False
+        b["lifted"] = True
+        return True
 
 
 class FakeWebhook:
@@ -47,13 +141,17 @@ class FakeWebhook:
 
 @pytest.fixture
 def make(tmp_path):
-    def _make(drawings=None, webhook=None, **overrides):
+    def _make(drawings=None, webhook=None, comments=None, bans=None, admin_verifier=None, **overrides):
         settings = Settings(images_dir=tmp_path / "images", discord_webhook_url="https://discord.invalid/x",
                             **overrides)
         drawings = drawings or FakeDrawings()
+        comments = comments or FakeComments(drawings)
+        bans = bans or FakeBans()
         webhook = webhook or FakeWebhook()
-        client = TestClient(create_app(settings, drawings=drawings, webhook=webhook))
+        client = TestClient(create_app(settings, drawings=drawings, comments=comments, bans=bans,
+                                       webhook=webhook, admin_verifier=admin_verifier))
         client.__enter__()                                   # run the lifespan
+        client.comments, client.bans = comments, bans
         return client, drawings, webhook, settings
     return _make
 
@@ -122,12 +220,6 @@ def test_per_ip_rate_limit(make):
     assert submit(client, body, ip="198.51.100.1").status_code == 200
 
 
-def test_gallery_api_keeps_the_original_shape(make):
-    client, *_ = make()
-    submit(client, data_url(canvas_like()))
-    j = client.get("/dragon-gallery/image/1").json()
-    assert j["message"] == "Successfully found image." and uuid.UUID(j["image"]) and j["number"] == 1
-    assert client.get("/dragon-gallery/image/99").status_code == 404
 
 
 def test_gallery_number_must_be_an_integer(make):
