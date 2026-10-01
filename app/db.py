@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from importlib import resources
 
+from psycopg import sql
 from psycopg_pool import AsyncConnectionPool
 
 log = logging.getLogger("dragonmail.db")
@@ -182,8 +183,12 @@ class Drawings:
                         "INSERT INTO drawings (id, number, created_at, ip, width, height)"
                         " OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, NULL, %s, %s)",
                         (drawing_id, number, created_at, width, height))
-                await conn.execute("SELECT setval(pg_get_serial_sequence('drawings', 'number'),"
-                                   " (SELECT max(number) FROM drawings))")
+                # Never lower the counter: numbers of deleted drawings stay retired (D-0007 #1).
+                cur = await conn.execute("SELECT pg_get_serial_sequence('drawings', 'number')")
+                seq = (await cur.fetchone())[0]
+                await conn.execute(
+                    sql.SQL("SELECT setval({0}, GREATEST((SELECT max(number) FROM drawings),"
+                            " (SELECT last_value FROM {1})))").format(sql.Literal(seq), sql.Identifier(*seq.split("."))))
 
     async def ping(self) -> bool:
         try:

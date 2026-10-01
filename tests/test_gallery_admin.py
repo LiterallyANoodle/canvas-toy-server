@@ -200,7 +200,8 @@ def test_admin_posts_must_come_from_this_site(make):
         assert admin_post(client, f"/admin/drawings/{did}/hide", headers=headers).status_code == 403
     assert drawings.rows[1][3] is False
     referer_only = {"Cf-Access-Jwt-Assertion": "good", "Host": HOST, "Referer": f"https://{HOST}/admin"}
-    assert admin_post(client, f"/admin/drawings/{did}/hide", headers=referer_only).status_code == 303
+    assert admin_post(client, f"/admin/drawings/{did}/hide", headers=referer_only).status_code == 403
+    assert admin_post(client, f"/admin/drawings/{did}/hide").status_code == 303
 
 
 def test_admin_lists_everything_with_ips(make):
@@ -318,3 +319,25 @@ def test_a_standard_drawing_fills_the_frame_and_a_small_one_does_not(make):
     assert submit(client, data_url(canvas_like(250, 200))).status_code == 200
     page = client.get("/dragon-gallery/image/2").text
     assert 'class="opening"' in page and 'style="width: 50.0%"' in page
+
+
+def test_a_banned_visitor_is_told_even_if_the_bot_field_is_filled(make):
+    # D-0007 #4: a browser autofilling the hidden field mustn't hide the ban notice.
+    client, *_ = make()
+    draw(client)
+    ban(client, IP + "/32", scope="comment")
+    assert comment(client, 1, "hi", website="x").headers["location"].endswith("c=banned#comments")
+
+
+def test_the_comment_cap_holds_without_content_length(make):
+    # D-0007 #2: the cap is counted while reading, not taken from the header.
+    client, *_ = make(comment_max_chars=20)
+    draw(client)
+    def chunks():
+        yield b"body="
+        for _ in range(50):
+            yield b"x" * 100
+    r = client.post("/dragon-gallery/image/1/comments", content=chunks(),
+                    headers={"CF-Connecting-IP": IP, "Content-Type": "application/x-www-form-urlencoded"},
+                    follow_redirects=False)
+    assert r.headers["location"].endswith("c=long#comments") and client.comments.rows == {}

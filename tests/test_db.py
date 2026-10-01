@@ -148,3 +148,17 @@ def test_import_numbered_takes_the_low_numbers_and_moves_the_counter(repo):
     (d,) = [d for d in _run(loop, drawings.admin_page(10, 0)) if d.number == 3]
     assert d.ip is None
     assert _run(loop, drawings.add(uuid.uuid4(), "203.0.113.7", datetime.now(timezone.utc))) == 4
+
+
+
+def test_import_never_lowers_the_counter(repo):
+    # D-0007 #1: numbers of deleted drawings are not handed out again.
+    loop, drawings, *_ = repo
+    now = datetime.now(timezone.utc)
+    ids = [uuid.uuid4() for _ in range(5)]
+    for i in ids:
+        _run(loop, drawings.add(i, "203.0.113.7", now))                  # 1-5
+    for i in ids:
+        _run(loop, drawings.delete(i))
+    _run(loop, drawings.import_numbered([(uuid.uuid4(), 1, now, 500, 500), (uuid.uuid4(), 2, now, 500, 500)]))
+    assert _run(loop, drawings.add(uuid.uuid4(), "203.0.113.7", now)) == 6

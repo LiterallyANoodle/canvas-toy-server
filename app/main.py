@@ -18,7 +18,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
@@ -222,16 +222,20 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
         drawing = await state["drawings"].by_number(number)
         if drawing is None:
             raise HTTPException(404)
-        declared = request.headers.get("content-length")
-        if not (declared and declared.isdigit()) or int(declared) > 4 * settings.comment_max_chars + 1024:
-            return back("long")
-        form = await request.form()
-        if form.get("website"):                      # the hidden field only bots fill in
-            return back("posted")
         ban = await state["bans"].active_for(ip, "comment")
         if ban is not None:
             return back("banned")
-        body = clean_comment(str(form.get("body", "")))
+        # The cap is enforced while reading, whatever Content-Length claims (D-0007 #2).
+        cap = 4 * settings.comment_max_chars + 1024
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw += chunk
+            if len(raw) > cap:
+                return back("long")
+        form = parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True, max_num_fields=10)
+        if form.get("website", [""])[0]:              # the hidden field only bots fill in
+            return back("posted")
+        body = clean_comment(form.get("body", [""])[0])
         if not body:
             return back("empty")
         if len(body) > settings.comment_max_chars:
@@ -266,8 +270,10 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
             raise HTTPException(403) from None
 
     def same_origin(request: Request) -> bool:
-        """Admin forms only count when posted from this site (no cross-site form tricks)."""
-        source = request.headers.get("origin") or request.headers.get("referer") or ""
+        """Admin forms only count when posted from this site (no cross-site form tricks). Browsers
+        send Origin on every POST; Referer is not accepted instead (D-0007 #3). Defense in depth:
+        every admin action also needs a valid Access token."""
+        source = request.headers.get("origin") or ""
         host = request.headers.get("host", "")
         return bool(source) and source != "null" and urlsplit(source).netloc == host
 
