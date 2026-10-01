@@ -576,3 +576,16 @@ def test_sign_and_placeholders(make):
     assert 'placeholder="Aristocratic critique here"' in page
     lot_css = page[page.index(".lot {"):page.index("}", page.index(".lot {"))]
     assert "color: gold" in lot_css
+
+
+
+def test_admin_refusals_say_why_in_the_log(make, caplog):
+    client, drawings, *_ = make(admin_verifier=AllowAll())
+    draw(client)
+    with caplog.at_level("WARNING", logger="dragonmail"):
+        client.get("/admin", headers={"Cf-Access-Jwt-Assertion": "forged"})
+        admin_post(client, f"/admin/drawings/{drawings.rows[1][0]}/hide",
+                   headers={**ADMIN, "Origin": "https://elsewhere.example"})
+    text = caplog.text
+    assert "admin refused: nope" in text
+    assert "admin refused: noodle@example.com posted from origin 'https://elsewhere.example'" in text

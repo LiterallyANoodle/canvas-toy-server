@@ -357,6 +357,8 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
         """The admin's email and the posted form."""
         email = await require_admin(request)
         if not same_origin(request):
+            log.warning("admin refused: %s posted from origin %r to host %r", email,
+                        request.headers.get("origin"), request.headers.get("host"))
             raise HTTPException(403)
         return email, await request.form()
 
