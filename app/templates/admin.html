@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+{% from "_time.html" import when, localize_script %}
 <html lang="en">
 <head>
     <meta charset="utf-8">
@@ -21,37 +22,57 @@
         .who { color: #999; font-size: 0.9em; }
         input, select { background: #222; color: #ddd; border: 1px solid #555; }
         .pager { margin: 8px 0; }
+        input.reason { width: 14em; }
+        input.amount { width: 4em; }
+        .why { color: #fc6; font-size: 0.9em; }
     </style>
 </head>
 <body>
     <h1>Dragon Mail admin</h1>
     <p class="who">Signed in as {{ admin }} &middot; <a href="/dragon-gallery">gallery</a> &middot;
-        <a href="#drawings">drawings</a> &middot; <a href="#comments">comments</a> &middot; <a href="#bans">bans</a></p>
+        <a href="#drawings">drawings</a> &middot; <a href="#comments">comments</a> &middot; <a href="#bans">bans</a> &middot; <a href="#log">log</a></p>
     {% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
 
-    {% macro ban_form(ip) -%}
+    {% macro ban_fields() -%}
+        <select name="duration">{% for key, label in durations %}<option value="{{ key }}">{{ label }}</option>{% endfor %}<option value="custom">custom:</option></select>
+        <input class="amount" name="custom_amount" inputmode="decimal" placeholder="n">
+        <select name="custom_unit">{% for u in units %}<option value="{{ u }}"{% if u == "days" %} selected{% endif %}>{{ u }}</option>{% endfor %}</select>
+        <select name="scope"><option value="all">from everything</option><option value="comment">from commenting</option><option value="draw">from drawing</option></select>
+        <input class="reason" name="reason" placeholder="reason (you and they see it)" maxlength="200">
+    {%- endmacro %}
+
+    {% macro ban_form(ip, kind, ref) -%}
     <form class="inline" method="post" action="/admin/bans">
         <input type="hidden" name="network" value="{{ ip }}">
-        <select name="duration">{% for key, label in durations %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select>
-        <select name="scope"><option value="all">from everything</option><option value="comment">from commenting</option><option value="draw">from drawing</option></select>
+        <input type="hidden" name="subject_kind" value="{{ kind }}">
+        <input type="hidden" name="subject_ref" value="{{ ref }}">
+        {{ ban_fields() }}
         <button>Ban {{ ip }}</button>
+    </form>
+    {%- endmacro %}
+
+    {% macro moderate(kind, id, hidden, label) -%}
+    <form class="inline" method="post" action="/admin/{{ kind }}/{{ id }}/{{ 'unhide' if hidden else 'hide' }}">
+        <input class="reason" name="reason" placeholder="reason (only you see it)" maxlength="200">
+        {% if hidden %}<button formaction="/admin/{{ kind }}/{{ id }}/unhide">Unhide</button>{% else %}<button formaction="/admin/{{ kind }}/{{ id }}/hide">Hide</button>{% endif %}
+        <button class="danger" formaction="/admin/{{ kind }}/{{ id }}/delete" onclick="return confirm('Delete {{ label }} for good?')">Delete</button>
     </form>
     {%- endmacro %}
 
     <h2 id="drawings">Drawings</h2>
     <table>
-        <tr><th></th><th>#</th><th>When (UTC)</th><th>IP</th><th>Comments</th><th>Actions</th></tr>
+        <tr><th></th><th>#</th><th>When</th><th>IP</th><th>Comments</th><th>Actions</th></tr>
         {% for d in drawings %}
         <tr class="{{ 'hidden' if d.hidden }}">
             <td><a href="/admin/images/{{ d.id }}.png"><img class="thumb" src="/admin/images/{{ d.id }}.png" alt=""></a></td>
             <td>{% if d.hidden %}{{ d.number }} <span class="tag">hidden</span>{% else %}<a href="/dragon-gallery/image/{{ d.number }}">{{ d.number }}</a>{% endif %}</td>
-            <td>{{ d.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+            <td>{{ when(d.created_at) }}</td>
             <td>{{ d.ip or "—" }}</td>
             <td>{{ d.comment_count }}</td>
             <td>
-                <form class="inline" method="post" action="/admin/drawings/{{ d.id }}/{{ 'unhide' if d.hidden else 'hide' }}"><button>{{ 'Unhide' if d.hidden else 'Hide' }}</button></form>
-                <form class="inline" method="post" action="/admin/drawings/{{ d.id }}/delete" onsubmit="return confirm('Delete drawing #{{ d.number }} and its comments for good?')"><button class="danger">Delete</button></form>
-                {% if d.ip %}<br>{{ ban_form(d.ip) }}{% endif %}
+                {% if d.hidden and d.mod_reason %}<span class="why">hidden: {{ d.mod_reason }}</span><br>{% endif %}
+                {{ moderate("drawings", d.id, d.hidden, "drawing #" ~ d.number ~ " and its comments") }}
+                {% if d.ip %}<br>{{ ban_form(d.ip, "drawing", d.id) }}{% endif %}
             </td>
         </tr>
         {% else %}
@@ -63,17 +84,17 @@
 
     <h2 id="comments">Comments</h2>
     <table>
-        <tr><th>On</th><th>When (UTC)</th><th>Comment</th><th>IP</th><th>Actions</th></tr>
+        <tr><th>On</th><th>When</th><th>Comment</th><th>IP</th><th>Actions</th></tr>
         {% for c in comments %}
         <tr class="{{ 'hidden' if c.hidden }}">
             <td><a href="/dragon-gallery/image/{{ c.drawing_number }}">#{{ c.drawing_number }}</a></td>
-            <td>{{ c.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
-            <td class="body">{{ c.body }}{% if c.hidden %} <span class="tag">hidden</span>{% endif %}</td>
+            <td>{{ when(c.created_at) }}</td>
+            <td class="body"><span class="who">{{ c.name or "Anonymous" }}:</span> {{ c.body }}{% if c.hidden %} <span class="tag">hidden</span>{% endif %}{% if c.hidden and c.mod_reason %}
+<span class="why">hidden: {{ c.mod_reason }}</span>{% endif %}</td>
             <td>{{ c.ip }}</td>
             <td>
-                <form class="inline" method="post" action="/admin/comments/{{ c.id }}/{{ 'unhide' if c.hidden else 'hide' }}"><button>{{ 'Unhide' if c.hidden else 'Hide' }}</button></form>
-                <form class="inline" method="post" action="/admin/comments/{{ c.id }}/delete" onsubmit="return confirm('Delete this comment for good?')"><button class="danger">Delete</button></form>
-                <br>{{ ban_form(c.ip) }}
+                {{ moderate("comments", c.id, c.hidden, "this comment") }}
+                <br>{{ ban_form(c.ip, "comment", c.id) }}
             </td>
         </tr>
         {% else %}
@@ -84,28 +105,40 @@
         {% if comments|length == page_size %}<a href="?dpage={{ dpage }}&cpage={{ cpage + 1 }}#comments">older &rarr;</a>{% endif %}</p>
 
     <h2 id="bans">Bans</h2>
-    <p class="who">Bans are timeouts: each one ends by itself. An address or a range (e.g. 203.0.113.0/24).</p>
+    <p class="who">Bans are timeouts: each one ends by itself. An address or a range (e.g. 203.0.113.0/24).
+        The banned visitor sees the reason, the end time and what it was for when they try to post, and
+        once more after it ends; then the ban is erased (the log below keeps it).</p>
     <table>
-        <tr><th>Who</th><th>From</th><th>Until (UTC)</th><th>Reason</th><th></th></tr>
+        <tr><th>Who</th><th>From</th><th>Until</th><th>Reason</th><th>For</th><th></th></tr>
         {% for b in bans %}
         <tr>
             <td>{{ b.network }}</td>
             <td>{{ {'all': 'everything', 'draw': 'drawing', 'comment': 'commenting'}[b.scope] }}</td>
-            <td>{{ b.expires_at.strftime("%Y-%m-%d %H:%M") }}</td>
+            <td>{{ when(b.expires_at) }}</td>
             <td>{{ b.reason }}</td>
+            <td class="body">{% if b.subject_kind == "comment" %}comment: <q>{{ b.subject_text }}</q>{% elif b.subject_kind == "drawing" and b.subject_at %}drawing sent {{ when(b.subject_at) }}{% endif %}</td>
             <td><form class="inline" method="post" action="/admin/bans/{{ b.id }}/lift"><button>Lift</button></form></td>
         </tr>
         {% else %}
-        <tr><td colspan="5">No active bans.</td></tr>
+        <tr><td colspan="6">No active bans.</td></tr>
         {% endfor %}
     </table>
     <h3>New ban</h3>
     <form method="post" action="/admin/bans">
         <input name="network" placeholder="IP or range" required>
-        <select name="duration">{% for key, label in durations %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select>
-        <select name="scope"><option value="all">from everything</option><option value="comment">from commenting</option><option value="draw">from drawing</option></select>
-        <input name="reason" placeholder="reason (only you see it)" maxlength="200">
+        {{ ban_fields() }}
         <button>Ban</button>
     </form>
+
+    <h2 id="log">Moderation log</h2>
+    <table>
+        <tr><th>When</th><th>Who</th><th>What</th><th>On</th><th>Reason</th></tr>
+        {% for m in modlog %}
+        <tr><td>{{ when(m.at) }}</td><td>{{ m.admin }}</td><td>{{ m.action }}</td><td>{{ m.target }}</td><td>{{ m.reason }}</td></tr>
+        {% else %}
+        <tr><td colspan="5">Nothing yet.</td></tr>
+        {% endfor %}
+    </table>
+    {{ localize_script() }}
 </body>
 </html>

@@ -33,6 +33,7 @@ class AdminDrawing:
     ip: str | None                    # None for drawings imported from before the database
     hidden: bool
     comment_count: int
+    mod_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,7 @@ class Comment:
     id: int
     created_at: datetime
     body: str
+    name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,17 @@ class AdminComment:
     body: str
     ip: str
     hidden: bool
+    name: str | None = None
+    mod_reason: str = ""
+
+
+@dataclass(frozen=True)
+class ModAction:
+    at: datetime
+    admin: str
+    action: str
+    target: str
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -60,6 +73,9 @@ class Ban:
     reason: str
     created_at: datetime
     expires_at: datetime
+    subject_kind: str = ""            # "comment", "drawing" or "" (a ban typed in by hand)
+    subject_text: str = ""            # the comment's text, when it was for a comment
+    subject_at: datetime | None = None
 
 
 BAN_SCOPES = ("all", "draw", "comment")
@@ -145,26 +161,38 @@ class Drawings:
         async with self.pool.connection() as conn:
             cur = await conn.execute(
                 "SELECT d.id, d.number, d.created_at, host(d.ip), d.hidden,"
-                "       (SELECT count(*) FROM comments c WHERE c.drawing_id = d.id)"
+                "       (SELECT count(*) FROM comments c WHERE c.drawing_id = d.id), d.mod_reason"
                 " FROM drawings d ORDER BY d.number DESC LIMIT %s OFFSET %s",
                 (limit, offset))
             return [AdminDrawing(*r) for r in await cur.fetchall()]
+
+    async def get(self, drawing_id: uuid.UUID) -> Drawing | None:
+        """Any drawing by id, hidden or not."""
+        async with self.pool.connection() as conn:
+            cur = await conn.execute("SELECT id, number, created_at, width, height FROM drawings WHERE id = %s",
+                                     (drawing_id,))
+            row = await cur.fetchone()
+            return Drawing(*row) if row else None
 
     async def exists(self, drawing_id: uuid.UUID) -> bool:
         async with self.pool.connection() as conn:
             cur = await conn.execute("SELECT 1 FROM drawings WHERE id = %s", (drawing_id,))
             return await cur.fetchone() is not None
 
-    async def set_hidden(self, drawing_id: uuid.UUID, hidden: bool) -> bool:
+    async def set_hidden(self, drawing_id: uuid.UUID, hidden: bool, reason: str = "") -> int | None:
+        """Returns the drawing's number, or None if it's gone."""
         async with self.pool.connection() as conn:
-            cur = await conn.execute("UPDATE drawings SET hidden = %s WHERE id = %s", (hidden, drawing_id))
-            return cur.rowcount == 1
+            cur = await conn.execute("UPDATE drawings SET hidden = %s, mod_reason = %s WHERE id = %s RETURNING number",
+                                     (hidden, reason, drawing_id))
+            row = await cur.fetchone()
+            return row[0] if row else None
 
-    async def delete(self, drawing_id: uuid.UUID) -> bool:
-        """Deletes the row (its comments go with it). The caller removes the file."""
+    async def delete(self, drawing_id: uuid.UUID) -> int | None:
+        """Deletes the row (its comments go with it) and returns its number. The caller removes the file."""
         async with self.pool.connection() as conn:
-            cur = await conn.execute("DELETE FROM drawings WHERE id = %s", (drawing_id,))
-            return cur.rowcount == 1
+            cur = await conn.execute("DELETE FROM drawings WHERE id = %s RETURNING number", (drawing_id,))
+            row = await cur.fetchone()
+            return row[0] if row else None
 
     async def import_numbered(self, rows: list[tuple[uuid.UUID, int, datetime, int, int]]) -> None:
         """Insert old drawings (id, number, created_at, width, height) under the given numbers, in one
@@ -203,11 +231,12 @@ class Comments:
     def __init__(self, pool: AsyncConnectionPool):
         self.pool = pool
 
-    async def add(self, drawing_id: uuid.UUID, body: str, ip: str, created_at: datetime) -> int:
+    async def add(self, drawing_id: uuid.UUID, body: str, ip: str, created_at: datetime,
+                  name: str | None = None) -> int:
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "INSERT INTO comments (drawing_id, body, ip, created_at) VALUES (%s, %s, %s, %s) RETURNING id",
-                (drawing_id, body, ip, created_at))
+                "INSERT INTO comments (drawing_id, body, ip, created_at, name) VALUES (%s, %s, %s, %s, %s)"
+                " RETURNING id", (drawing_id, body, ip, created_at, name or None))
             row = await cur.fetchone()
             return int(row[0])
 
@@ -215,21 +244,29 @@ class Comments:
         """Visible comments, oldest first."""
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT id, created_at, body FROM comments WHERE drawing_id = %s AND NOT hidden"
+                "SELECT id, created_at, body, name FROM comments WHERE drawing_id = %s AND NOT hidden"
                 " ORDER BY created_at, id", (drawing_id,))
             return [Comment(*r) for r in await cur.fetchall()]
+
+    async def get(self, comment_id: int) -> Comment | None:
+        """Any comment by id, hidden or not."""
+        async with self.pool.connection() as conn:
+            cur = await conn.execute("SELECT id, created_at, body, name FROM comments WHERE id = %s", (comment_id,))
+            row = await cur.fetchone()
+            return Comment(*row) if row else None
 
     async def admin_page(self, limit: int, offset: int) -> list[AdminComment]:
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT c.id, d.number, c.created_at, c.body, host(c.ip), c.hidden"
+                "SELECT c.id, d.number, c.created_at, c.body, host(c.ip), c.hidden, c.name, c.mod_reason"
                 " FROM comments c JOIN drawings d ON d.id = c.drawing_id"
                 " ORDER BY c.id DESC LIMIT %s OFFSET %s", (limit, offset))
             return [AdminComment(*r) for r in await cur.fetchall()]
 
-    async def set_hidden(self, comment_id: int, hidden: bool) -> bool:
+    async def set_hidden(self, comment_id: int, hidden: bool, reason: str = "") -> bool:
         async with self.pool.connection() as conn:
-            cur = await conn.execute("UPDATE comments SET hidden = %s WHERE id = %s", (hidden, comment_id))
+            cur = await conn.execute("UPDATE comments SET hidden = %s, mod_reason = %s WHERE id = %s",
+                                     (hidden, reason, comment_id))
             return cur.rowcount == 1
 
     async def delete(self, comment_id: int) -> bool:
@@ -246,30 +283,79 @@ class Bans:
         """The longest-running active ban covering `ip` for `scope` ('draw' or 'comment')."""
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT id, network::text, scope, reason, created_at, expires_at FROM bans"
+                "SELECT id, network::text, scope, reason, created_at, expires_at, subject_kind, subject_text, subject_at FROM bans"
                 " WHERE network >>= %s::inet AND scope IN ('all', %s)"
                 "   AND lifted_at IS NULL AND expires_at > now()"
                 " ORDER BY expires_at DESC LIMIT 1", (ip, scope))
             row = await cur.fetchone()
             return Ban(*row) if row else None
 
-    async def add(self, network: str, scope: str, expires_at: datetime, reason: str) -> int:
+    async def ended_untold_for(self, ip: str, scope: str) -> Ban | None:
+        """The latest ban covering `ip` for `scope` that ran out before the visitor was ever told."""
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "INSERT INTO bans (network, scope, expires_at, reason) VALUES (%s::cidr, %s, %s, %s)"
-                " RETURNING id", (network, scope, expires_at, reason))
+                "SELECT id, network::text, scope, reason, created_at, expires_at, subject_kind, subject_text, subject_at FROM bans"
+                " WHERE network >>= %s::inet AND scope IN ('all', %s)"
+                "   AND lifted_at IS NULL AND expires_at <= now() AND notified_at IS NULL"
+                " ORDER BY expires_at DESC LIMIT 1", (ip, scope))
+            row = await cur.fetchone()
+            return Ban(*row) if row else None
+
+    async def mark_told(self, ban_id: int) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute("UPDATE bans SET notified_at = now() WHERE id = %s", (ban_id,))
+
+    async def by_id(self, ban_id: int) -> Ban | None:
+        async with self.pool.connection() as conn:
+            cur = await conn.execute("SELECT id, network::text, scope, reason, created_at, expires_at, subject_kind, subject_text, subject_at FROM bans" " WHERE id = %s", (ban_id,))
+            row = await cur.fetchone()
+            return Ban(*row) if row else None
+
+    async def add(self, network: str, scope: str, expires_at: datetime, reason: str,
+                  subject_kind: str = "", subject_text: str = "", subject_at: datetime | None = None) -> int:
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                "INSERT INTO bans (network, scope, expires_at, reason, subject_kind, subject_text, subject_at)"
+                " VALUES (%s::cidr, %s, %s, %s, %s, %s, %s) RETURNING id",
+                (network, scope, expires_at, reason, subject_kind, subject_text, subject_at))
             row = await cur.fetchone()
             return int(row[0])
 
     async def active(self) -> list[Ban]:
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT id, network::text, scope, reason, created_at, expires_at FROM bans"
+                "SELECT id, network::text, scope, reason, created_at, expires_at, subject_kind, subject_text, subject_at FROM bans"
                 " WHERE lifted_at IS NULL AND expires_at > now() ORDER BY expires_at")
             return [Ban(*r) for r in await cur.fetchall()]
 
     async def lift(self, ban_id: int) -> bool:
+        """Lifting erases the ban (the moderation log keeps the record)."""
+        return await self.forget(ban_id)
+
+    async def forget(self, ban_id: int) -> bool:
+        async with self.pool.connection() as conn:
+            cur = await conn.execute("DELETE FROM bans WHERE id = %s", (ban_id,))
+            return cur.rowcount == 1
+
+    async def purge_done(self) -> int:
+        """Erase bans that are over and that the visitor already knows about (operator, msg 539)."""
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "UPDATE bans SET lifted_at = now() WHERE id = %s AND lifted_at IS NULL", (ban_id,))
-            return cur.rowcount == 1
+                "DELETE FROM bans WHERE lifted_at IS NOT NULL OR (expires_at <= now() AND notified_at IS NOT NULL)")
+            return cur.rowcount
+
+
+class ModLog:
+    def __init__(self, pool: AsyncConnectionPool):
+        self.pool = pool
+
+    async def add(self, admin: str, action: str, target: str, reason: str) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute("INSERT INTO mod_log (admin, action, target, reason) VALUES (%s, %s, %s, %s)",
+                               (admin, action, target, reason))
+
+    async def recent(self, limit: int) -> list[ModAction]:
+        async with self.pool.connection() as conn:
+            cur = await conn.execute("SELECT at, admin, action, target, reason FROM mod_log ORDER BY id DESC LIMIT %s",
+                                     (limit,))
+            return [ModAction(*r) for r in await cur.fetchall()]

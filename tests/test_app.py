@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.config import Settings
-from app.db import AdminComment, AdminDrawing, Ban, Comment, Drawing
+from app.db import AdminComment, AdminDrawing, Ban, Comment, Drawing, ModAction
 from app.main import create_app
 from tests.test_units import canvas_like, data_url
 
@@ -18,6 +18,7 @@ class FakeDrawings:
     def __init__(self, fail=False):
         self.rows: dict[int, tuple] = {}
         self.sizes: dict[int, tuple] = {}
+        self.reasons: dict[int, str] = {}
         self.fail = fail
 
     async def add(self, drawing_id, ip, created_at, width=None, height=None):
@@ -49,8 +50,13 @@ class FakeDrawings:
         return min(self._visible(), default=None)
 
     async def admin_page(self, limit, offset):
-        out = [AdminDrawing(r[0], n, r[2], r[1], r[3], 0) for n, r in sorted(self.rows.items(), reverse=True)]
+        out = [AdminDrawing(r[0], n, r[2], r[1], r[3], 0, self.reasons.get(n, ""))
+               for n, r in sorted(self.rows.items(), reverse=True)]
         return out[offset:offset + limit]
+
+    async def get(self, drawing_id):
+        n = self._find(drawing_id)
+        return Drawing(self.rows[n][0], n, self.rows[n][2]) if n is not None else None
 
     async def exists(self, drawing_id):
         return any(r[0] == drawing_id for r in self.rows.values())
@@ -58,76 +64,124 @@ class FakeDrawings:
     def _find(self, drawing_id):
         return next((n for n, r in self.rows.items() if r[0] == drawing_id), None)
 
-    async def set_hidden(self, drawing_id, hidden):
+    async def set_hidden(self, drawing_id, hidden, reason=""):
         n = self._find(drawing_id)
         if n is None:
-            return False
+            return None
         r = self.rows[n]
         self.rows[n] = (r[0], r[1], r[2], hidden)
-        return True
+        self.reasons[n] = reason
+        return n
 
     async def delete(self, drawing_id):
         n = self._find(drawing_id)
-        return self.rows.pop(n, None) is not None if n is not None else False
+        if n is None:
+            return None
+        del self.rows[n]
+        return n
 
 
 class FakeComments:
     def __init__(self, drawings):
         self.drawings, self.rows = drawings, {}
 
-    async def add(self, drawing_id, body, ip, created_at):
+    async def add(self, drawing_id, body, ip, created_at, name=None):
         cid = len(self.rows) + 1
-        self.rows[cid] = dict(drawing_id=drawing_id, body=body, ip=ip, created_at=created_at, hidden=False)
+        self.rows[cid] = dict(drawing_id=drawing_id, body=body, ip=ip, created_at=created_at, hidden=False,
+                              name=name, reason="")
         return cid
 
+    async def get(self, comment_id):
+        c = self.rows.get(comment_id)
+        return Comment(comment_id, c["created_at"], c["body"], c["name"]) if c else None
+
     async def for_drawing(self, drawing_id):
-        return [Comment(i, c["created_at"], c["body"]) for i, c in sorted(self.rows.items())
+        return [Comment(i, c["created_at"], c["body"], c["name"]) for i, c in sorted(self.rows.items())
                 if c["drawing_id"] == drawing_id and not c["hidden"]]
 
     async def admin_page(self, limit, offset):
         num = {r[0]: n for n, r in self.drawings.rows.items()}
-        out = [AdminComment(i, num.get(c["drawing_id"], 0), c["created_at"], c["body"], c["ip"], c["hidden"])
+        out = [AdminComment(i, num.get(c["drawing_id"], 0), c["created_at"], c["body"], c["ip"], c["hidden"],
+                            c["name"], c["reason"])
                for i, c in sorted(self.rows.items(), reverse=True)]
         return out[offset:offset + limit]
 
-    async def set_hidden(self, comment_id, hidden):
+    async def set_hidden(self, comment_id, hidden, reason=""):
         if comment_id not in self.rows:
             return False
-        self.rows[comment_id]["hidden"] = hidden
+        self.rows[comment_id].update(hidden=hidden, reason=reason)
         return True
 
     async def delete(self, comment_id):
         return self.rows.pop(comment_id, None) is not None
 
 
+class FakeModLog:
+    def __init__(self):
+        self.rows = []
+
+    async def add(self, admin, action, target, reason):
+        self.rows.append(ModAction(datetime.now(timezone.utc), admin, action, target, reason))
+
+    async def recent(self, limit):
+        return list(reversed(self.rows))[:limit]
+
+
 class FakeBans:
     def __init__(self):
         self.rows = {}
+        self.next_id = 1
+
+    def _ban(self, i):
+        b = self.rows[i]
+        return Ban(i, b["network"], b["scope"], b["reason"], b["created_at"], b["expires_at"],
+                   b["subject_kind"], b["subject_text"], b["subject_at"])
+
+    def _covering(self, ip, scope):
+        return [i for i, b in self.rows.items() if b["scope"] in ("all", scope)
+                and ipaddress.ip_address(ip) in ipaddress.ip_network(b["network"])]
 
     async def active_for(self, ip, scope):
         now = datetime.now(timezone.utc)
-        for i, b in self.rows.items():
-            if (not b.get("lifted") and b["expires_at"] > now and b["scope"] in ("all", scope)
-                    and ipaddress.ip_address(ip) in ipaddress.ip_network(b["network"])):
-                return Ban(i, b["network"], b["scope"], b["reason"], now, b["expires_at"])
-        return None
+        live = [i for i in self._covering(ip, scope) if self.rows[i]["expires_at"] > now]
+        return self._ban(max(live, key=lambda i: self.rows[i]["expires_at"])) if live else None
 
-    async def add(self, network, scope, expires_at, reason):
-        bid = len(self.rows) + 1
-        self.rows[bid] = dict(network=network, scope=scope, expires_at=expires_at, reason=reason)
+    async def ended_untold_for(self, ip, scope):
+        now = datetime.now(timezone.utc)
+        done = [i for i in self._covering(ip, scope)
+                if self.rows[i]["expires_at"] <= now and self.rows[i]["told"] is None]
+        return self._ban(max(done, key=lambda i: self.rows[i]["expires_at"])) if done else None
+
+    async def mark_told(self, ban_id):
+        if ban_id in self.rows:
+            self.rows[ban_id]["told"] = datetime.now(timezone.utc)
+
+    async def by_id(self, ban_id):
+        return self._ban(ban_id) if ban_id in self.rows else None
+
+    async def add(self, network, scope, expires_at, reason, subject_kind="", subject_text="", subject_at=None):
+        bid, self.next_id = self.next_id, self.next_id + 1
+        self.rows[bid] = dict(network=network, scope=scope, expires_at=expires_at, reason=reason,
+                              created_at=datetime.now(timezone.utc), subject_kind=subject_kind,
+                              subject_text=subject_text, subject_at=subject_at, told=None)
         return bid
 
     async def active(self):
         now = datetime.now(timezone.utc)
-        return [Ban(i, b["network"], b["scope"], b["reason"], now, b["expires_at"])
-                for i, b in self.rows.items() if not b.get("lifted") and b["expires_at"] > now]
+        return [self._ban(i) for i, b in self.rows.items() if b["expires_at"] > now]
 
     async def lift(self, ban_id):
-        b = self.rows.get(ban_id)
-        if b is None or b.get("lifted"):
-            return False
-        b["lifted"] = True
-        return True
+        return await self.forget(ban_id)
+
+    async def forget(self, ban_id):
+        return self.rows.pop(ban_id, None) is not None
+
+    async def purge_done(self):
+        now = datetime.now(timezone.utc)
+        gone = [i for i, b in self.rows.items() if b["expires_at"] <= now and b["told"] is not None]
+        for i in gone:
+            del self.rows[i]
+        return len(gone)
 
 
 class FakeWebhook:
@@ -141,17 +195,18 @@ class FakeWebhook:
 
 @pytest.fixture
 def make(tmp_path):
-    def _make(drawings=None, webhook=None, comments=None, bans=None, admin_verifier=None, **overrides):
+    def _make(drawings=None, webhook=None, comments=None, bans=None, admin_verifier=None, modlog=None, **overrides):
         settings = Settings(images_dir=tmp_path / "images", discord_webhook_url="https://discord.invalid/x",
                             **overrides)
         drawings = drawings or FakeDrawings()
         comments = comments or FakeComments(drawings)
         bans = bans or FakeBans()
+        modlog = modlog or FakeModLog()
         webhook = webhook or FakeWebhook()
-        client = TestClient(create_app(settings, drawings=drawings, comments=comments, bans=bans,
+        client = TestClient(create_app(settings, drawings=drawings, comments=comments, bans=bans, modlog=modlog,
                                        webhook=webhook, admin_verifier=admin_verifier))
         client.__enter__()                                   # run the lifespan
-        client.comments, client.bans = comments, bans
+        client.comments, client.bans, client.modlog = comments, bans, modlog
         return client, drawings, webhook, settings
     return _make
 
@@ -166,7 +221,8 @@ def test_the_drawing_page_is_served_with_its_look(make):
     r = client.get("/draw")
     assert r.status_code == 200 and "<canvas" in r.text and 'fetch("/submit"' in r.text
     assert client.get("/Assets/fonts/Ciircuit-Regular.ttf").status_code == 200
-    assert client.get("/", follow_redirects=False).headers["location"] == "/draw"
+    assert client.get("/", follow_redirects=False).headers["location"] == "/dragon-gallery"
+    assert 'href="/dragon-gallery"' in r.text
 
 
 def test_a_drawing_is_saved_recorded_and_forwarded(make):

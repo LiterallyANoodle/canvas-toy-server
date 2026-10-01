@@ -148,7 +148,7 @@ def test_ban_scopes(make):
     client, *_ = make()
     draw(client)
     ban(client, IP + "/32", scope="comment")
-    assert comment(client, 1, "hi").headers["location"].endswith("c=banned#comments")
+    assert comment(client, 1, "hi").headers["location"].endswith("c=banned&b=1#comments")
     draw(client)                                           # drawing still allowed
     ban(client, "198.51.100.1/32", scope="draw")
     assert comment(client, 1, "hi", ip="198.51.100.1").headers["location"].endswith("c=posted#comments")
@@ -260,10 +260,32 @@ def test_admin_refuses_bad_or_huge_ranges(make, network, key):
     assert r.headers["location"] == f"/admin?n={key}#bans" and client.bans.rows == {}
 
 
-def test_a_ban_always_has_an_end(make):
+@pytest.mark.parametrize("form", [
+    {"duration": "forever"},
+    {"duration": "custom", "custom_amount": "", "custom_unit": "days"},
+    {"duration": "custom", "custom_amount": "nan", "custom_unit": "days"},
+    {"duration": "custom", "custom_amount": "inf", "custom_unit": "days"},
+    {"duration": "custom", "custom_amount": "-3", "custom_unit": "days"},
+    {"duration": "custom", "custom_amount": "30", "custom_unit": "seconds"},
+    {"duration": "custom", "custom_amount": "600", "custom_unit": "weeks"},         # over 10 years
+    {"duration": "custom", "custom_amount": "1e300", "custom_unit": "days"},
+])
+def test_a_ban_always_has_a_sane_end(make, form):
     client, *_ = make(admin_verifier=AllowAll())
-    assert admin_post(client, "/admin/bans", {"network": IP, "duration": "forever", "scope": "all"}).status_code == 400
-    assert client.bans.rows == {}
+    r = admin_post(client, "/admin/bans", {"network": IP, "scope": "all", **form})
+    assert r.headers["location"] == "/admin?n=badtime#bans" and client.bans.rows == {}
+
+
+def test_custom_ban_durations(make):
+    client, *_ = make(admin_verifier=AllowAll())
+    r = admin_post(client, "/admin/bans", {"network": IP, "scope": "comment", "duration": "custom",
+                                           "custom_amount": "90", "custom_unit": "minutes", "reason": "cool off"})
+    assert r.headers["location"] == "/admin?n=banned#bans"
+    (b,) = client.bans.rows.values()
+    left = b["expires_at"] - datetime.now(timezone.utc)
+    assert timedelta(minutes=89) < left <= timedelta(minutes=90) and b["reason"] == "cool off"
+    (entry,) = client.modlog.rows
+    assert entry.action == "ban (comment)" and entry.reason == "cool off" and entry.admin == "noodle@example.com"
 
 
 # --- the Cloudflare Access token check ------------------------------------
@@ -326,7 +348,7 @@ def test_a_banned_visitor_is_told_even_if_the_bot_field_is_filled(make):
     client, *_ = make()
     draw(client)
     ban(client, IP + "/32", scope="comment")
-    assert comment(client, 1, "hi", website="x").headers["location"].endswith("c=banned#comments")
+    assert comment(client, 1, "hi", website="x").headers["location"].endswith("c=banned&b=1#comments")
 
 
 def test_the_comment_cap_holds_without_content_length(make):
@@ -341,3 +363,163 @@ def test_the_comment_cap_holds_without_content_length(make):
                     headers={"CF-Connecting-IP": IP, "Content-Type": "application/x-www-form-urlencoded"},
                     follow_redirects=False)
     assert r.headers["location"].endswith("c=long#comments") and client.comments.rows == {}
+
+
+
+# --- polish round (operator msgs 534/535) -----------------------------------
+def test_comments_can_carry_a_name(make):
+    client, *_ = make()
+    draw(client)
+    comment(client, 1, "hello", name="  Sir   Dragon\x07 ")
+    comment(client, 1, "anon one")
+    comment(client, 1, "long", name="x" * 100)
+    page = client.get("/dragon-gallery/image/1").text
+    assert "Sir Dragon &middot;" in page and "Anonymous &middot;" in page
+    assert [c["name"] for c in client.comments.rows.values()] == ["Sir Dragon", None, "x" * 40]
+    assert comment(client, 1, "x", name="<b>bold</b>").status_code == 303
+    assert "<b>bold</b>" not in client.get("/dragon-gallery/image/1").text
+
+
+def test_times_carry_iso_for_local_rendering(make):
+    client, *_ = make()
+    draw(client)
+    comment(client, 1, "hi")
+    page = client.get("/dragon-gallery/image/1").text
+    assert page.count('<time datetime="') == 2 and 'data-kind="date"' in page and "toLocaleString" in page
+
+
+def test_reasons_are_kept_and_logged(make):
+    client, drawings, *_ = make(admin_verifier=AllowAll())
+    draw(client)
+    comment(client, 1, "rude")
+    did = drawings.rows[1][0]
+    admin_post(client, f"/admin/drawings/{did}/hide", {"reason": "not a dragon"})
+    admin_post(client, "/admin/comments/1/hide", {"reason": "rude\nreally"})
+    page = client.get("/admin", headers=ADMIN).text
+    assert "hidden: not a dragon" in page and "hidden: rude really" in page
+    admin_post(client, "/admin/comments/1/delete", {"reason": "gone"})
+    admin_post(client, f"/admin/drawings/{did}/delete", {"reason": "spam"})
+    assert [(m.action, m.target, m.reason) for m in client.modlog.rows] == [
+        ("hide drawing", "#1", "not a dragon"), ("hide comment", "comment 1", "rude really"),
+        ("delete comment", "comment 1", "gone"), ("delete drawing", "#1", "spam")]
+    assert "spam" in client.get("/admin", headers=ADMIN).text           # the log outlives the drawing
+
+
+def test_unhide_clears_the_reason(make):
+    client, drawings, *_ = make(admin_verifier=AllowAll())
+    draw(client)
+    did = drawings.rows[1][0]
+    admin_post(client, f"/admin/drawings/{did}/hide", {"reason": "oops"})
+    admin_post(client, f"/admin/drawings/{did}/unhide", {"reason": "ignored"})
+    assert drawings.reasons[1] == ""
+
+
+def test_submit_reply_links_the_gallery(make):
+    client, *_ = make(public_base_url="https://canvas.example")
+    r = submit(client, data_url(canvas_like()))
+    assert "https://canvas.example/dragon-gallery/image/1" in r.text
+
+
+def test_the_lot_sign_and_comments_sit_inside_the_column(make):
+    client, *_ = make()
+    draw(client)
+    page = client.get("/dragon-gallery/image/1").text
+    content = page.index('<div class="content">')
+    assert content < page.index('<div class="lot">') < page.index('<div class="comments"')
+    assert "background-size: 100% 100%" in page
+
+
+# --- ban notices (operator msgs 537/539/540) --------------------------------
+def admin_ban_row(client, kind, ref, ip=IP, **extra):
+    data = {"network": ip, "scope": "all", "duration": "1d", "reason": "be nice", "subject_kind": kind,
+            "subject_ref": str(ref), **extra}
+    return admin_post(client, "/admin/bans", data)
+
+
+def expire(client, ban_id):
+    client.bans.rows[ban_id]["expires_at"] = datetime.now(timezone.utc) - timedelta(minutes=1)
+
+
+def test_a_ban_from_a_comment_row_tells_the_banned_visitor_why(make):
+    client, *_ = make(admin_verifier=AllowAll())
+    draw(client)
+    comment(client, 1, "you all stink")
+    admin_ban_row(client, "comment", 1)
+    admin_post(client, "/admin/comments/1/delete")                  # the copy outlives the comment
+    r = comment(client, 1, "again")
+    assert r.headers["location"] == "/dragon-gallery/image/1?c=banned&b=1#comments"
+    page = client.get(r.headers["location"], headers={"CF-Connecting-IP": IP}).text
+    assert "in a timeout until" in page and "Reason: be nice" in page and "you all stink" in page
+    d = submit(client, data_url(canvas_like()))
+    assert d.status_code == 403 and "Reason: be nice" in d.text and 'your comment: "you all stink"' in d.text
+
+
+def test_a_ban_from_a_drawing_row_names_the_drawing_time(make):
+    client, drawings, *_ = make(admin_verifier=AllowAll())
+    draw(client)
+    admin_ban_row(client, "drawing", drawings.rows[1][0])
+    d = submit(client, data_url(canvas_like()))
+    stamp = drawings.rows[1][2].astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    assert d.status_code == 403 and f"your drawing sent {stamp} UTC" in d.text
+
+
+def test_nobody_else_sees_the_reason(make):
+    client, *_ = make(admin_verifier=AllowAll())
+    draw(client)
+    comment(client, 1, "rude")
+    admin_ban_row(client, "comment", 1)
+    for headers in ({"CF-Connecting-IP": "198.51.100.1"}, {}):
+        page = client.get("/dragon-gallery/image/1?c=banned&b=1", headers=headers).text
+        assert "be nice" not in page and "rude</q>" not in page
+
+
+def test_a_ban_that_ended_unseen_is_told_once_then_erased(make):
+    client, *_ = make(admin_verifier=AllowAll())
+    draw(client)
+    comment(client, 1, "rude")
+    admin_ban_row(client, "comment", 1)
+    expire(client, 1)
+    r = comment(client, 1, "sorry")                                     # goes through, with the notice
+    assert r.headers["location"] == "/dragon-gallery/image/1?c=posted&b=1#comments"
+    assert [c["body"] for c in client.comments.rows.values()] == ["rude", "sorry"]
+    page = client.get(r.headers["location"], headers={"CF-Connecting-IP": IP}).text
+    assert "you were in a timeout until" in page and "Reason: be nice" in page
+    assert client.bans.rows == {}                                       # acknowledged: erased
+    assert "were in a timeout" not in client.get(r.headers["location"], headers={"CF-Connecting-IP": IP}).text
+
+
+def test_a_drawing_after_an_unseen_ban_carries_the_notice_once(make):
+    client, *_ = make(admin_verifier=AllowAll())
+    admin_post(client, "/admin/bans", {"network": IP, "scope": "all", "duration": "1h", "reason": "spam"})
+    expire(client, 1)
+    first = submit(client, data_url(canvas_like()))
+    assert first.status_code == 200 and "Heads up: You were in a timeout until" in first.text and "spam" in first.text
+    assert client.bans.rows == {}
+    assert "Heads up" not in submit(client, data_url(canvas_like())).text
+
+
+def test_a_ban_seen_while_active_is_purged_after_it_ends(make):
+    client, *_ = make(admin_verifier=AllowAll())
+    admin_post(client, "/admin/bans", {"network": IP, "scope": "all", "duration": "1h", "reason": "spam"})
+    assert submit(client, data_url(canvas_like())).status_code == 403   # told while active
+    expire(client, 1)
+    assert "Heads up" not in submit(client, data_url(canvas_like())).text
+    client.get("/admin", headers=ADMIN)
+    assert client.bans.rows == {}
+
+
+def test_the_admin_sees_reason_and_subject(make):
+    client, *_ = make(admin_verifier=AllowAll())
+    draw(client)
+    comment(client, 1, "you all stink")
+    admin_ban_row(client, "comment", 1)
+    page = client.get("/admin", headers=ADMIN).text
+    assert "be nice" in page and "comment: <q>you all stink</q>" in page
+
+
+def test_a_forged_subject_is_ignored(make):
+    client, *_ = make(admin_verifier=AllowAll())
+    admin_ban_row(client, "comment", 999)
+    admin_ban_row(client, "drawing", "not-a-uuid", ip="198.51.100.1")
+    admin_ban_row(client, "<script>", 1, ip="198.51.100.2")
+    assert [b["subject_kind"] for b in client.bans.rows.values()] == ["", "", ""]

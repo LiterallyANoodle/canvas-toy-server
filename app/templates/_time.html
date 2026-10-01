@@ -1,0 +1,17 @@
+{#- Times are rendered in UTC and rewritten to the viewer's own time zone in the browser. -#}
+{% macro when(dt, kind="datetime") -%}
+<time datetime="{{ dt.isoformat() }}" data-kind="{{ kind }}">{% if kind == "date" %}{{ dt.strftime("%-d %B %Y") }}{% else %}{{ dt.strftime("%Y-%m-%d %H:%M") }} UTC{% endif %}</time>
+{%- endmacro %}
+
+{% macro localize_script() -%}
+<script>
+    document.querySelectorAll("time[data-kind]").forEach(function (t) {
+        var d = new Date(t.getAttribute("datetime"));
+        if (isNaN(d)) return;
+        t.title = t.textContent;
+        t.textContent = t.dataset.kind === "date"
+            ? d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })
+            : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    });
+</script>
+{%- endmacro %}

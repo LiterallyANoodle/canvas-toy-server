@@ -20,7 +20,7 @@ def repo():
         pool = AsyncConnectionPool(URL, min_size=1, max_size=5, open=False)
         await pool.open(wait=True)
         async with pool.connection() as conn:
-            await conn.execute("DROP TABLE IF EXISTS comments, bans, drawings, schema_migrations")
+            await conn.execute("DROP TABLE IF EXISTS comments, bans, mod_log, drawings, schema_migrations")
         applied = await migrate(pool)
         return pool, applied
 
@@ -34,7 +34,7 @@ def repo():
 def test_migrations_apply_once(repo):
     loop, _, applied, pool = repo
     from app.db import migrate
-    assert applied == ["001_drawings.sql", "002_comments_bans.sql"]
+    assert applied == ["001_drawings.sql", "002_comments_bans.sql", "003_names_reasons.sql"]
     assert loop.run_until_complete(migrate(pool)) == [], "re-running applies nothing"
 
 
@@ -162,3 +162,57 @@ def test_import_never_lowers_the_counter(repo):
         _run(loop, drawings.delete(i))
     _run(loop, drawings.import_numbered([(uuid.uuid4(), 1, now, 500, 500), (uuid.uuid4(), 2, now, 500, 500)]))
     assert _run(loop, drawings.add(uuid.uuid4(), "203.0.113.7", now)) == 6
+
+
+
+def test_names_reasons_and_the_mod_log(repo):
+    loop, drawings, _, pool = repo
+    from app.db import Comments, ModLog
+    comments, modlog = Comments(pool), ModLog(pool)
+    now = datetime.now(timezone.utc)
+    did = uuid.uuid4()
+    _run(loop, drawings.add(did, "203.0.113.7", now))
+    cid = _run(loop, comments.add(did, "hi", "203.0.113.8", now, "Sir Dragon"))
+    _run(loop, comments.add(did, "anon", "203.0.113.8", now, ""))
+    assert [c.name for c in _run(loop, comments.for_drawing(did))] == ["Sir Dragon", None]
+    with pytest.raises(Exception):                       # names are capped in the schema too
+        _run(loop, comments.add(did, "x", "203.0.113.8", now, "n" * 41))
+    _run(loop, comments.set_hidden(cid, True, "rude"))
+    assert [c.mod_reason for c in _run(loop, comments.admin_page(10, 0)) if c.id == cid] == ["rude"]
+    assert _run(loop, drawings.set_hidden(did, True, "spam")) == 1
+    (d,) = _run(loop, drawings.admin_page(10, 0))
+    assert d.mod_reason == "spam"
+    assert _run(loop, drawings.set_hidden(uuid.uuid4(), True)) is None
+    assert _run(loop, drawings.delete(did)) == 1 and _run(loop, drawings.delete(did)) is None
+    _run(loop, modlog.add("noodle@example.com", "delete drawing", "#1", "spam"))
+    (m,) = _run(loop, modlog.recent(10))
+    assert (m.admin, m.action, m.target, m.reason) == ("noodle@example.com", "delete drawing", "#1", "spam")
+
+
+def test_ban_subjects_telling_and_purging(repo):
+    loop, _, _, pool = repo
+    from datetime import timedelta
+    from app.db import Bans
+    bans = Bans(pool)
+    now = datetime.now(timezone.utc)
+    sent = datetime(2026, 10, 1, 20, 0, tzinfo=timezone.utc)
+    live = _run(loop, bans.add("203.0.113.7/32", "all", now + timedelta(hours=1), "be nice", "comment", "rude", sent))
+    got = _run(loop, bans.active_for("203.0.113.7", "comment"))
+    assert (got.subject_kind, got.subject_text, got.subject_at) == ("comment", "rude", sent)
+    assert _run(loop, bans.by_id(live)).reason == "be nice"
+
+    async def end(ban_id):
+        async with pool.connection() as conn:
+            await conn.execute("UPDATE bans SET created_at = now() - interval '2 hours',"
+                               " expires_at = now() - interval '1 minute' WHERE id = %s", (ban_id,))
+    _run(loop, end(live))
+    assert _run(loop, bans.active_for("203.0.113.7", "comment")) is None
+    assert _run(loop, bans.ended_untold_for("203.0.113.7", "comment")).id == live
+    assert _run(loop, bans.ended_untold_for("198.51.100.1", "comment")) is None
+
+    told = _run(loop, bans.add("198.51.100.0/24", "draw", now + timedelta(hours=1), "", "drawing", "", sent))
+    _run(loop, bans.mark_told(told))
+    _run(loop, end(told))
+    assert _run(loop, bans.ended_untold_for("198.51.100.9", "draw")) is None     # already knew
+    assert _run(loop, bans.purge_done()) == 1 and _run(loop, bans.by_id(told)) is None
+    assert _run(loop, bans.forget(live)) and _run(loop, bans.by_id(live)) is None

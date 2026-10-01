@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 {#- The operator's gallery page (legacy/gallery/gallery.html), with the drawing in the frame and comments underneath. -#}
+{% from "_time.html" import when, localize_script %}
 <html lang="en">
 <head>
     <meta charset="utf-8">
@@ -84,13 +85,14 @@
 
         /* The auction lot sign (Assets/SOURCE.md). */
         .lot {
-            display: inline-block;
-            width: 240px;
-            height: 80px;
-            line-height: 80px;
+            display: block;
+            height: 90px;
+            line-height: 90px;
             background: url(/Assets/wooden_sign.png) no-repeat;
+            background-size: 100% 100%;         /* stretched to the column: the cruder the better */
+            image-rendering: pixelated;
             font-family: "Times New Roman", Times, serif;
-            font-size: 30px;
+            font-size: 36px;
             color: #3b2108;
             text-shadow: 1px 1px 0 #e8c88a;
         }
@@ -112,11 +114,13 @@
         .comment .who { color: gold; font-size: 0.85em; }
         .none { color: #999; font-style: italic; }
 
-        form textarea { width: 100%; box-sizing: border-box; background: #111; color: lightgray; border: 1px solid gold; font: inherit; }
+        form textarea, form input.name { width: 100%; box-sizing: border-box; background: #111; color: lightgray; border: 1px solid gold; font: inherit; }
+        form input.name { margin-bottom: 4px; }
         form button { background: black; color: gold; border: 1px solid gold; padding: 4px 12px; cursor: pointer; }
         .trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
         .message { color: gold; }
         .message.bad { color: #f88; }
+        .timeout { border: 2px solid #f88; text-align: left; }
 
     </style>
 </head>
@@ -129,14 +133,14 @@
                 <img src="/Assets/sword3.gif" alt="">
             </div>
             {% if drawing %}
-            <div><span class="lot">Lot No. {{ drawing.number }}</span></div>
+            <div class="lot">Lot No. {{ drawing.number }}</div>
             <div>
                 <span class="framed">
                     <span class="opening{% if standard %} standard{% endif %}"><img class="drawing" style="width: {{ scale_pct }}%" src="/images/{{ drawing.id }}.png" alt="Drawing #{{ drawing.number }}"></span>
                     <img class="frame" src="/Assets/Square-Gold-Frame-PNG-908289183.png" alt="">
                 </span>
             </div>
-            <div class="plaque">{{ drawing.created_at.strftime("%-d %B %Y") }}</div>
+            <div class="plaque">{{ when(drawing.created_at, "date") }}</div>
             <div class="nav">
                 {% if prev %}<a href="/dragon-gallery/image/{{ prev }}">&larr; older</a>{% else %}<span class="off">&larr; older</span>{% endif %}
                 <a href="/draw">draw one!</a>
@@ -146,24 +150,35 @@
             <div class="message">{{ empty_message }}</div>
             <div class="nav"><span></span><a href="/draw">draw one!</a><span></span></div>
             {% endif %}
-        </div>
         {% if drawing %}
         <div class="comments" id="comments">
             <h2>Comments</h2>
             {% if notice %}<div class="message{% if notice_bad %} bad{% endif %}">{{ notice }}</div>{% endif %}
+            {% if ban %}
+            <div class="message bad timeout">
+                {% if ban_ended %}{% if notice_posted %}Your comment is up. But heads up: you{% else %}You{% endif %} were in a timeout until {{ when(ban.expires_at) }}.
+                {%- else %}You're in a timeout until {{ when(ban.expires_at) }}, so you can't comment yet.{% endif %}
+                {% if ban.reason %}<br>Reason: {{ ban.reason }}{% endif %}
+                {% if ban.subject_kind == "comment" %}<br>It was for your comment: <q>{{ ban.subject_text }}</q>
+                {% elif ban.subject_kind == "drawing" and ban.subject_at %}<br>It was for your drawing sent {{ when(ban.subject_at) }}.{% endif %}
+            </div>
+            {% endif %}
             {% for c in comments %}
-            <div class="comment"><span class="who">Anonymous &middot; {{ c.created_at.strftime("%Y-%m-%d %H:%M") }} UTC</span>
+            <div class="comment"><span class="who">{{ c.name or "Anonymous" }} &middot; {{ when(c.created_at) }}</span>
 {{ c.body }}</div>
             {% else %}
             <p class="none">No comments yet.</p>
             {% endfor %}
             <form method="post" action="/dragon-gallery/image/{{ drawing.number }}/comments">
-                <textarea name="body" rows="3" maxlength="{{ max_chars }}" required placeholder="Say something nice (anonymously)"></textarea>
+                <input class="name" name="name" maxlength="40" placeholder="Name (optional)" autocomplete="nickname">
+                <textarea name="body" rows="3" maxlength="{{ max_chars }}" required placeholder="Say something nice"></textarea>
                 <div class="trap" aria-hidden="true"><label>Leave this empty <input name="website" tabindex="-1" autocomplete="off"></label></div>
                 <button type="submit">Post</button>
             </form>
         </div>
         {% endif %}
+        </div>
     </div>
+    {{ localize_script() }}
 </body>
 </html>
