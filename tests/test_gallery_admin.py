@@ -589,3 +589,12 @@ def test_admin_refusals_say_why_in_the_log(make, caplog):
     text = caplog.text
     assert "admin refused: nope" in text
     assert "admin refused: noodle@example.com posted from origin 'https://elsewhere.example'" in text
+
+
+
+def test_the_banner_shrinks_on_narrow_screens(make):
+    client, *_ = make()
+    draw(client)
+    page = client.get("/dragon-gallery/image/1").text
+    assert '<meta name="viewport" content="width=device-width, initial-scale=1">' in page
+    assert ".title img { flex: 0 1 auto; min-width: 0;" in page and "clamp(" in page

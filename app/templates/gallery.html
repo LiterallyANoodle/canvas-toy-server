@@ -46,6 +46,11 @@
 
         .title a { color: gold; text-decoration: none; }
 
+        /* On a narrow (phone) screen the swords shrink and the title scales, instead of the
+           banner running off to the right (operator, msg 548). */
+        .title img { flex: 0 1 auto; min-width: 0; width: 30%; max-width: 250px; height: auto; }
+        .title h1 { flex: 0 0 auto; margin: 0.3em 4px; font-size: clamp(1.3em, 7vw, 2em); white-space: nowrap; }
+
         .frame {
             max-width: 100%;
             height: 100%;
