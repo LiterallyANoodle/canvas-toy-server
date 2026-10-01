@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from importlib import resources
 
-from psycopg import sql
 from psycopg_pool import AsyncConnectionPool
 
 log = logging.getLogger("dragonmail.db")
@@ -110,26 +109,47 @@ async def migrate(pool: AsyncConnectionPool) -> list[str]:
     return applied
 
 
+# Public numbers are positions, not ids (operator, msg 542): No. 1 is always the oldest drawing
+# that still exists (hidden ones count; deleted ones don't), so deleting a drawing renumbers the
+# ones after it. The `number` column is only an internal tie-breaker now.
+RANKED = ("WITH ranked AS (SELECT d.*, row_number() OVER (ORDER BY d.created_at, d.number) AS pos"
+          " FROM drawings d) ")
+
+
 class Drawings:
     def __init__(self, pool: AsyncConnectionPool):
         self.pool = pool
 
-    async def add(self, drawing_id: uuid.UUID, ip: str, created_at: datetime,
+    async def add(self, drawing_id: uuid.UUID, ip: str | None, created_at: datetime,
                   width: int | None = None, height: int | None = None) -> int:
-        """Insert and return the new gallery number."""
+        """Insert and return the new drawing's gallery number."""
         async with self.pool.connection() as conn:
-            cur = await conn.execute(
-                "INSERT INTO drawings (id, ip, created_at, width, height) VALUES (%s, %s, %s, %s, %s)"
-                " RETURNING number",
+            await conn.execute(
+                "INSERT INTO drawings (id, ip, created_at, width, height) VALUES (%s, %s, %s, %s, %s)",
                 (drawing_id, ip, created_at, width, height))
-            row = await cur.fetchone()
-            return int(row[0])
+            return await self._position(conn, drawing_id)
+
+    async def add_many(self, rows: list[tuple[uuid.UUID, datetime, int, int]]) -> None:
+        """Old drawings (id, created_at, width, height), no IP, all or nothing. They take their
+        places by date among the drawings already there."""
+        async with self.pool.connection() as conn:
+            async with conn.transaction():
+                for drawing_id, created_at, width, height in rows:
+                    await conn.execute(
+                        "INSERT INTO drawings (id, ip, created_at, width, height) VALUES (%s, NULL, %s, %s, %s)",
+                        (drawing_id, created_at, width, height))
+
+    @staticmethod
+    async def _position(conn, drawing_id: uuid.UUID) -> int | None:
+        cur = await conn.execute(RANKED + "SELECT pos FROM ranked WHERE id = %s", (drawing_id,))
+        row = await cur.fetchone()
+        return int(row[0]) if row else None
 
     async def by_number(self, number: int) -> Drawing | None:
         """A visible drawing by gallery number, or None."""
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT id, number, created_at, width, height FROM drawings WHERE number = %s AND NOT hidden",
+                RANKED + "SELECT id, pos, created_at, width, height FROM ranked WHERE pos = %s AND NOT hidden",
                 (number,))
             row = await cur.fetchone()
             return Drawing(*row) if row else None
@@ -140,18 +160,18 @@ class Drawings:
             return await cur.fetchone() is not None
 
     async def neighbours(self, number: int) -> tuple[int | None, int | None]:
-        """The visible drawings just before and just after `number` (gaps skipped)."""
+        """The visible drawings just before and just after `number` (hidden ones skipped)."""
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT (SELECT max(number) FROM drawings WHERE number < %s AND NOT hidden),"
-                "       (SELECT min(number) FROM drawings WHERE number > %s AND NOT hidden)",
+                RANKED + "SELECT (SELECT max(pos) FROM ranked WHERE pos < %s AND NOT hidden),"
+                         "       (SELECT min(pos) FROM ranked WHERE pos > %s AND NOT hidden)",
                 (number, number))
             row = await cur.fetchone()
             return (row[0], row[1]) if row else (None, None)
 
     async def first_number(self) -> int | None:
         async with self.pool.connection() as conn:
-            cur = await conn.execute("SELECT min(number) FROM drawings WHERE NOT hidden")
+            cur = await conn.execute(RANKED + "SELECT min(pos) FROM ranked WHERE NOT hidden")
             row = await cur.fetchone()
             return row[0] if row else None
 
@@ -160,16 +180,16 @@ class Drawings:
         """Newest first, hidden ones included."""
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT d.id, d.number, d.created_at, host(d.ip), d.hidden,"
+                RANKED + "SELECT d.id, d.pos, d.created_at, host(d.ip), d.hidden,"
                 "       (SELECT count(*) FROM comments c WHERE c.drawing_id = d.id), d.mod_reason"
-                " FROM drawings d ORDER BY d.number DESC LIMIT %s OFFSET %s",
+                " FROM ranked d ORDER BY d.pos DESC LIMIT %s OFFSET %s",
                 (limit, offset))
             return [AdminDrawing(*r) for r in await cur.fetchall()]
 
     async def get(self, drawing_id: uuid.UUID) -> Drawing | None:
-        """Any drawing by id, hidden or not."""
+        """Any drawing by id, hidden or not, with its current number."""
         async with self.pool.connection() as conn:
-            cur = await conn.execute("SELECT id, number, created_at, width, height FROM drawings WHERE id = %s",
+            cur = await conn.execute(RANKED + "SELECT id, pos, created_at, width, height FROM ranked WHERE id = %s",
                                      (drawing_id,))
             row = await cur.fetchone()
             return Drawing(*row) if row else None
@@ -182,41 +202,18 @@ class Drawings:
     async def set_hidden(self, drawing_id: uuid.UUID, hidden: bool, reason: str = "") -> int | None:
         """Returns the drawing's number, or None if it's gone."""
         async with self.pool.connection() as conn:
-            cur = await conn.execute("UPDATE drawings SET hidden = %s, mod_reason = %s WHERE id = %s RETURNING number",
+            cur = await conn.execute("UPDATE drawings SET hidden = %s, mod_reason = %s WHERE id = %s",
                                      (hidden, reason, drawing_id))
-            row = await cur.fetchone()
-            return row[0] if row else None
+            return await self._position(conn, drawing_id) if cur.rowcount == 1 else None
 
     async def delete(self, drawing_id: uuid.UUID) -> int | None:
-        """Deletes the row (its comments go with it) and returns its number. The caller removes the file."""
-        async with self.pool.connection() as conn:
-            cur = await conn.execute("DELETE FROM drawings WHERE id = %s RETURNING number", (drawing_id,))
-            row = await cur.fetchone()
-            return row[0] if row else None
-
-    async def import_numbered(self, rows: list[tuple[uuid.UUID, int, datetime, int, int]]) -> None:
-        """Insert old drawings (id, number, created_at, width, height) under the given numbers, in one
-        transaction, and move the number counter past them. Refuses if any number is taken."""
-        numbers = [r[1] for r in rows]
+        """Deletes the row (its comments go with it) and returns the number it had. The caller
+        removes the file."""
         async with self.pool.connection() as conn:
             async with conn.transaction():
-                await conn.execute("LOCK TABLE drawings IN EXCLUSIVE MODE")
-                cur = await conn.execute("SELECT number FROM drawings WHERE number = ANY(%s) ORDER BY number",
-                                         (numbers,))
-                taken = [r[0] for r in await cur.fetchall()]
-                if taken:
-                    raise ValueError(f"numbers already in use: {taken}")
-                for drawing_id, number, created_at, width, height in rows:
-                    await conn.execute(
-                        "INSERT INTO drawings (id, number, created_at, ip, width, height)"
-                        " OVERRIDING SYSTEM VALUE VALUES (%s, %s, %s, NULL, %s, %s)",
-                        (drawing_id, number, created_at, width, height))
-                # Never lower the counter: numbers of deleted drawings stay retired (D-0007 #1).
-                cur = await conn.execute("SELECT pg_get_serial_sequence('drawings', 'number')")
-                seq = (await cur.fetchone())[0]
-                await conn.execute(
-                    sql.SQL("SELECT setval({0}, GREATEST((SELECT max(number) FROM drawings),"
-                            " (SELECT last_value FROM {1})))").format(sql.Literal(seq), sql.Identifier(*seq.split("."))))
+                number = await self._position(conn, drawing_id)
+                cur = await conn.execute("DELETE FROM drawings WHERE id = %s", (drawing_id,))
+                return number if cur.rowcount == 1 else None
 
     async def ping(self) -> bool:
         try:
@@ -258,8 +255,8 @@ class Comments:
     async def admin_page(self, limit: int, offset: int) -> list[AdminComment]:
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT c.id, d.number, c.created_at, c.body, host(c.ip), c.hidden, c.name, c.mod_reason"
-                " FROM comments c JOIN drawings d ON d.id = c.drawing_id"
+                RANKED + "SELECT c.id, d.pos, c.created_at, c.body, host(c.ip), c.hidden, c.name, c.mod_reason"
+                " FROM comments c JOIN ranked d ON d.id = c.drawing_id"
                 " ORDER BY c.id DESC LIMIT %s OFFSET %s", (limit, offset))
             return [AdminComment(*r) for r in await cur.fetchall()]
 

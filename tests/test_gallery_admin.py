@@ -46,7 +46,7 @@ def test_the_gallery_page_shows_the_drawing_in_the_frame(make):
     assert "Square-Gold-Frame-PNG-908289183.png" in r.text and "Dragon Gallery" in r.text
     assert ">Lot No. 2<" in r.text
     assert 'href="/dragon-gallery/image/1"' in r.text and 'href="/dragon-gallery/image/3"' in r.text
-    for asset in ("Square-Gold-Frame-PNG-908289183.png", "white_marble.jpg", "sword3.gif", "wooden_sign.png"):
+    for asset in ("Square-Gold-Frame-PNG-908289183.png", "white_marble.jpg", "sword3.gif", "wooden_sign_dark.png"):
         assert client.get(f"/Assets/{asset}").status_code == 200, asset
 
 
@@ -73,9 +73,9 @@ def test_the_public_page_never_shows_ips(make):
 
 
 def test_discord_caption_links_the_gallery_when_the_url_is_known(make):
-    client, _, webhook, _ = make(public_base_url="https://canvas.example")
+    client, drawings, webhook, _ = make(public_base_url="https://canvas.example")
     draw(client)
-    assert "https://canvas.example/dragon-gallery/image/1" in webhook.calls[0][2]
+    assert f"https://canvas.example/dragon-gallery/d/{drawings.rows[1][0]}" in webhook.calls[0][2]
 
 
 # --- comments --------------------------------------------------------------
@@ -415,9 +415,9 @@ def test_unhide_clears_the_reason(make):
 
 
 def test_submit_reply_links_the_gallery(make):
-    client, *_ = make(public_base_url="https://canvas.example")
+    client, drawings, *_ = make(public_base_url="https://canvas.example")
     r = submit(client, data_url(canvas_like()))
-    assert "https://canvas.example/dragon-gallery/image/1" in r.text
+    assert f"https://canvas.example/dragon-gallery/d/{drawings.rows[1][0]}" in r.text
 
 
 def test_the_lot_sign_and_comments_sit_inside_the_column(make):
@@ -523,3 +523,56 @@ def test_a_forged_subject_is_ignored(make):
     admin_ban_row(client, "drawing", "not-a-uuid", ip="198.51.100.1")
     admin_ban_row(client, "<script>", 1, ip="198.51.100.2")
     assert [b["subject_kind"] for b in client.bans.rows.values()] == ["", "", ""]
+
+
+
+# --- numbers are positions (operator msg 542) -------------------------------
+def test_deleting_the_oldest_renumbers_the_rest(make):
+    client, drawings, *_ = make(admin_verifier=AllowAll())
+    draw(client, 3)
+    first, third = drawings.rows[1][0], drawings.rows[3][0]
+    admin_post(client, f"/admin/drawings/{first}/delete")
+    r = submit(client, data_url(canvas_like()))
+    assert "#3" in r.text                                              # the newest of three, not #4
+    page = client.get("/dragon-gallery/image/2").text
+    assert f"/images/{third}.png" in page and ">Lot No. 2<" in page
+    assert client.get("/dragon-gallery", follow_redirects=False).headers["location"] == "/dragon-gallery/image/1"
+
+
+def test_hidden_drawings_keep_their_place(make):
+    client, drawings, *_ = make(admin_verifier=AllowAll())
+    draw(client, 3)
+    admin_post(client, f"/admin/drawings/{drawings.rows[2][0]}/hide")
+    assert client.get("/dragon-gallery/image/2").status_code == 404
+    assert f"/images/{drawings.rows[3][0]}.png" in client.get("/dragon-gallery/image/3").text
+
+
+def test_older_imports_slot_in_first(make):
+    import asyncio
+    client, drawings, *_ = make()
+    draw(client)
+    newest = drawings.rows[1][0]
+    asyncio.run(drawings.add(uuid.uuid4(), None, datetime(2025, 10, 25, tzinfo=timezone.utc)))
+    assert f"/images/{newest}.png" in client.get("/dragon-gallery/image/2").text
+
+
+def test_the_permanent_link_follows_the_number(make):
+    client, drawings, *_ = make(admin_verifier=AllowAll())
+    draw(client, 2)
+    second = drawings.rows[2][0]
+    assert client.get(f"/dragon-gallery/d/{second}", follow_redirects=False).headers["location"] == "/dragon-gallery/image/2"
+    admin_post(client, f"/admin/drawings/{drawings.rows[1][0]}/delete")
+    assert client.get(f"/dragon-gallery/d/{second}", follow_redirects=False).headers["location"] == "/dragon-gallery/image/1"
+    admin_post(client, f"/admin/drawings/{second}/hide")
+    assert client.get(f"/dragon-gallery/d/{second}").status_code == 404
+    assert client.get(f"/dragon-gallery/d/{uuid.uuid4()}").status_code == 404
+
+
+def test_sign_and_placeholders(make):
+    client, *_ = make()
+    draw(client)
+    page = client.get("/dragon-gallery/image/1").text
+    assert "wooden_sign_dark.png" in page and 'placeholder="Name (Anonymous)"' in page
+    assert 'placeholder="Aristocratic critique here"' in page
+    lot_css = page[page.index(".lot {"):page.index("}", page.index(".lot {"))]
+    assert "color: gold" in lot_css

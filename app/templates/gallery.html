@@ -88,13 +88,13 @@
             display: block;
             height: 90px;
             line-height: 90px;
-            background: url(/Assets/wooden_sign.png) no-repeat;
+            background: url(/Assets/wooden_sign_dark.png) no-repeat;
             background-size: 100% 100%;         /* stretched to the column: the cruder the better */
             image-rendering: pixelated;
             font-family: "Times New Roman", Times, serif;
             font-size: 36px;
-            color: #3b2108;
-            text-shadow: 1px 1px 0 #e8c88a;
+            color: gold;
+            text-shadow: 2px 2px 0 black;
         }
 
         .plaque, .nav, .comments, .message {
@@ -170,8 +170,8 @@
             <p class="none">No comments yet.</p>
             {% endfor %}
             <form method="post" action="/dragon-gallery/image/{{ drawing.number }}/comments">
-                <input class="name" name="name" maxlength="40" placeholder="Name (optional)" autocomplete="nickname">
-                <textarea name="body" rows="3" maxlength="{{ max_chars }}" required placeholder="Say something nice"></textarea>
+                <input class="name" name="name" maxlength="40" placeholder="Name (Anonymous)" autocomplete="nickname">
+                <textarea name="body" rows="3" maxlength="{{ max_chars }}" required placeholder="Aristocratic critique here"></textarea>
                 <div class="trap" aria-hidden="true"><label>Leave this empty <input name="website" tabindex="-1" autocomplete="off"></label></div>
                 <button type="submit">Post</button>
             </form>

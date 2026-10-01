@@ -4,9 +4,9 @@
     docker compose exec dragon-mail python -m app.import_legacy --apply    # does it
 
 Reads every image in the folder (default /data/images/import), takes each one's time from
-its file name, and adds them as drawings numbered from 1 (or --start) in time order. Each is
-re-saved as a PNG like a new drawing, at its own size. Nothing is written without --apply,
-and nothing at all if any of those numbers is already taken.
+its file name, and adds them as drawings. Gallery numbers follow age, so they slot in by date
+before anything newer. Each is re-saved as a PNG like a new drawing, at its own size. Nothing
+is written without --apply, and either all of them go in or none do.
 """
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ def time_from_name(name: str, tz) -> datetime | None:
     return local.astimezone(timezone.utc)
 
 
-def plan(folder: Path, tz, start: int) -> tuple[list[tuple[Path, datetime]], list[str]]:
+def plan(folder: Path, tz) -> tuple[list[tuple[Path, datetime]], list[str]]:
     found, problems = [], []
     for path in sorted(p for p in folder.iterdir() if p.is_file()):
         if path.suffix.lower() not in SUFFIXES:
@@ -69,7 +69,7 @@ def load(path: Path) -> Image.Image:
         return images.flatten(img)
 
 
-async def apply(settings: Settings, found: list[tuple[Path, datetime]], start: int) -> None:
+async def apply(settings: Settings, found: list[tuple[Path, datetime]]) -> None:
     from psycopg_pool import AsyncConnectionPool
     from .db import Drawings, migrate
 
@@ -79,14 +79,14 @@ async def apply(settings: Settings, found: list[tuple[Path, datetime]], start: i
     try:
         await migrate(pool)
         rows = []
-        for number, (path, when) in enumerate(found, start):
+        for path, when in found:
             img = load(path)
             drawing_id = uuid.uuid4()
             out = settings.images_dir / f"{drawing_id}.png"
             out.write_bytes(images.to_png_bytes(img, when))
             written.append(out)
-            rows.append((drawing_id, number, when, img.width, img.height))
-        await Drawings(pool).import_numbered(rows)
+            rows.append((drawing_id, when, img.width, img.height))
+        await Drawings(pool).add_many(rows)
     except BaseException:
         for out in written:                    # files only stay if their rows went in
             out.unlink(missing_ok=True)
@@ -99,20 +99,19 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("folder", nargs="?", type=Path, default=Path("/data/images/import"))
     ap.add_argument("--tz", default="UTC", help="the timezone the file names are in, e.g. America/Chicago")
-    ap.add_argument("--start", type=int, default=1, help="the first number to give out (default 1)")
     ap.add_argument("--apply", action="store_true", help="actually import (without it: just show the plan)")
     args = ap.parse_args(argv)
 
     tz = ZoneInfo(args.tz)
-    found, problems = plan(args.folder, tz, args.start)
-    for number, (path, when) in enumerate(found, args.start):
+    found, problems = plan(args.folder, tz)
+    for path, when in found:
         try:
             with Image.open(path) as img:
                 size = f"{img.width}x{img.height}"
         except Exception as exc:
             size = f"UNREADABLE ({type(exc).__name__})"
             problems.append(f"can't read: {path.name}")
-        print(f"No. {number:>3}  {when:%Y-%m-%d %H:%M:%S} UTC  {size:>10}  {path.name}")
+        print(f"{when:%Y-%m-%d %H:%M:%S} UTC  {size:>10}  {path.name}")
     for p in problems:
         print(f"!! {p}")
     if not found:
@@ -124,12 +123,8 @@ def main(argv: list[str] | None = None) -> int:
     if not args.apply:
         print(f"\nDry run: nothing changed. If this looks right, run again with --apply.")
         return 0
-    try:
-        asyncio.run(apply(Settings(), found, args.start))
-    except ValueError as exc:
-        print(f"Nothing imported: {exc}. (Delete those drawings in /admin first, or use --start.)")
-        return 1
-    print(f"\nImported {len(found)} drawings: No. {args.start} to {args.start + len(found) - 1}.")
+    asyncio.run(apply(Settings(), found))
+    print(f"\nImported {len(found)} drawings. Gallery numbers follow age, so they come first.")
     return 0
 
 

@@ -43,8 +43,10 @@ def test_numbers_are_unique_under_concurrency(repo):
     now = datetime.now(timezone.utc)
     async def many():
         return await asyncio.gather(*(drawings.add(uuid.uuid4(), "203.0.113.7", now) for _ in range(20)))
-    numbers = loop.run_until_complete(many())
-    assert sorted(numbers) == list(range(1, 21))
+    loop.run_until_complete(many())
+    # The number reported back can briefly repeat under a race (it's counted before the others
+    # commit), but once they're in, the gallery's numbers are exactly 1..20, each once.
+    assert sorted(d.number for d in loop.run_until_complete(drawings.admin_page(50, 0))) == list(range(1, 21))
 
 
 def test_round_trip_and_hidden(repo):
@@ -131,38 +133,30 @@ def test_bans_cover_ranges_scopes_expiry_and_lifting(repo):
         _run(loop, bans.add("192.0.2.1/32", "all", datetime(2000, 1, 1, tzinfo=timezone.utc), ""))
 
 
-def test_import_numbered_takes_the_low_numbers_and_moves_the_counter(repo):
+def test_numbers_are_positions_by_age(repo):
     loop, drawings, *_ = repo
-    old = datetime(2024, 5, 1, tzinfo=timezone.utc)
-    test_id = uuid.uuid4()
-    _run(loop, drawings.add(test_id, "203.0.113.7", datetime.now(timezone.utc)))        # the test drawing, #1
-    rows = [(uuid.uuid4(), n, old, 500, 500) for n in (1, 2, 3)]
-    with pytest.raises(ValueError, match=r"\[1\]"):
-        _run(loop, drawings.import_numbered(rows))
-    assert _run(loop, drawings.first_number()) == 1 and _run(loop, drawings.by_number(2)) is None
-    _run(loop, drawings.delete(test_id))
-    rows[2] = (rows[2][0], 3, old, 120, 80)
-    _run(loop, drawings.import_numbered(rows))
-    got = _run(loop, drawings.by_number(3))
-    assert (got.width, got.height) == (120, 80)
-    (d,) = [d for d in _run(loop, drawings.admin_page(10, 0)) if d.number == 3]
-    assert d.ip is None
-    assert _run(loop, drawings.add(uuid.uuid4(), "203.0.113.7", datetime.now(timezone.utc))) == 4
-
-
-
-def test_import_never_lowers_the_counter(repo):
-    # D-0007 #1: numbers of deleted drawings are not handed out again.
-    loop, drawings, *_ = repo
+    from datetime import timedelta
     now = datetime.now(timezone.utc)
-    ids = [uuid.uuid4() for _ in range(5)]
-    for i in ids:
-        _run(loop, drawings.add(i, "203.0.113.7", now))                  # 1-5
-    for i in ids:
-        _run(loop, drawings.delete(i))
-    _run(loop, drawings.import_numbered([(uuid.uuid4(), 1, now, 500, 500), (uuid.uuid4(), 2, now, 500, 500)]))
-    assert _run(loop, drawings.add(uuid.uuid4(), "203.0.113.7", now)) == 6
-
+    ids = [uuid.uuid4() for _ in range(3)]
+    for i, did in enumerate(ids):
+        assert _run(loop, drawings.add(did, "203.0.113.7", now + timedelta(seconds=i))) == i + 1
+    assert _run(loop, drawings.delete(ids[0])) == 1
+    assert _run(loop, drawings.by_number(1)).id == ids[1]
+    assert _run(loop, drawings.add(uuid.uuid4(), "203.0.113.7", now + timedelta(seconds=9))) == 3
+    old = [(uuid.uuid4(), datetime(2025, 10, 25, 22, 49, tzinfo=timezone.utc), 500, 500),
+           (uuid.uuid4(), datetime(2025, 10, 26, tzinfo=timezone.utc), 120, 80)]
+    _run(loop, drawings.add_many(old))
+    assert _run(loop, drawings.by_number(1)).id == old[0][0]
+    small = _run(loop, drawings.by_number(2))
+    assert (small.id, small.width, small.height) == (old[1][0], 120, 80)
+    assert _run(loop, drawings.get(ids[1])).number == 3
+    _run(loop, drawings.set_hidden(ids[1], True))
+    assert _run(loop, drawings.by_number(3)) is None and _run(loop, drawings.neighbours(2)) == (1, 4)
+    (d,) = [d for d in _run(loop, drawings.admin_page(10, 0)) if d.id == old[0][0]]
+    assert d.number == 1 and d.ip is None
+    with pytest.raises(Exception):                       # all or nothing
+        _run(loop, drawings.add_many([(uuid.uuid4(), now, 1, 1), (old[0][0], now, 1, 1)]))
+    assert len(_run(loop, drawings.admin_page(50, 0))) == 5
 
 
 def test_names_reasons_and_the_mod_log(repo):

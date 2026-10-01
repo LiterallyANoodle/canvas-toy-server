@@ -41,8 +41,13 @@ docker compose exec dragon-mail python -m app.import_legacy --apply
 ```
 
 It reads `/data/images/import` (the images volume's `import/` folder), takes each time from
-the file name (UTC unless `--tz` says otherwise), and numbers them from 1 in time order.
-Each keeps its own size; the gallery shows a smaller one small in the frame.
+the file name (UTC unless `--tz` says otherwise), and adds them all or none. Each keeps its
+own size; the gallery shows a smaller one small in the frame.
+
+Gallery numbers are positions, not ids: No. 1 is the oldest drawing that still exists (hidden
+ones keep their place), so deleting one renumbers the newer ones, and imported old drawings
+slot in by date. Links that must not drift (Discord, the "got it" reply) use the drawing's
+permanent address, `/dragon-gallery/d/<id>`.
 
 ## Running it
 

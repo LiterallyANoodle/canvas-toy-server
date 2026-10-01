@@ -221,15 +221,15 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
             return PlainTextResponse("Something went wrong saving your drawing. Please try again later.\n",
                                      status_code=500)
 
-        caption = f"Drawing #{number} ({now:%Y-%m-%d %H:%M:%S} UTC)"
-        if settings.public_base_url:
-            caption += f" {settings.public_base_url}/dragon-gallery/image/{number}"
+        # Numbers shift when older drawings are deleted, so links use the drawing's permanent address.
+        link = f"{settings.public_base_url}/dragon-gallery/d/{drawing_id}" if settings.public_base_url else ""
+        caption = f"Drawing #{number} ({now:%Y-%m-%d %H:%M:%S} UTC)" + (f" {link}" if link else "")
         sent = await webhook(settings.discord_webhook_url, png, f"{drawing_id}.png", caption)
         if settings.discord_webhook_url and not sent:
             log.warning("drawing #%s saved but not forwarded to Discord", number)
         reply = f"Got it, thank you! Your drawing is #{number}.\n"
-        if settings.public_base_url:
-            reply += f"See it in the gallery: {settings.public_base_url}/dragon-gallery/image/{number}\n"
+        if link:
+            reply += f"See it in the gallery: {link}\n"
         ended = await bans.ended_untold_for(ip, "draw")
         if ended is not None:                        # told once, then erased (operator, msgs 537/539)
             reply += "\nHeads up: " + ban_notice(ended, now)
@@ -247,6 +247,14 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
         if first is None:
             return gallery_page(request, empty_message="No drawings yet. Be the first!")
         return RedirectResponse(f"/dragon-gallery/image/{first}", status_code=302)
+
+    @app.get("/dragon-gallery/d/{drawing_id}", include_in_schema=False)
+    async def gallery_permalink(request: Request, drawing_id: uuid.UUID):
+        """A drawing's permanent address: goes to wherever its number is now."""
+        drawing = await state["drawings"].get(drawing_id)
+        if drawing is None or not await state["drawings"].exists_visible(drawing_id):
+            return gallery_page(request, status_code=404, empty_message="That drawing isn't here any more.")
+        return RedirectResponse(f"/dragon-gallery/image/{drawing.number}", status_code=302)
 
     @app.get("/dragon-gallery/image/{number}", include_in_schema=False)
     async def gallery_image(request: Request, number: int, c: str = "", b: int = 0):

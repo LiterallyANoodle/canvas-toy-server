@@ -15,23 +15,39 @@ from tests.test_units import canvas_like, data_url
 
 
 class FakeDrawings:
+    """rows: internal seq -> (id, ip, created_at, hidden). Public numbers are positions by age."""
+
     def __init__(self, fail=False):
         self.rows: dict[int, tuple] = {}
         self.sizes: dict[int, tuple] = {}
         self.reasons: dict[int, str] = {}
         self.fail = fail
+        self.seq = 0
+
+    def _ranked(self):
+        return sorted(self.rows, key=lambda k: (self.rows[k][2], k))
+
+    def _pos(self, seq):
+        return self._ranked().index(seq) + 1
+
+    def _find(self, drawing_id):
+        return next((k for k, r in self.rows.items() if r[0] == drawing_id), None)
 
     async def add(self, drawing_id, ip, created_at, width=None, height=None):
         if self.fail:
             raise RuntimeError("db down")
-        number = max(self.rows, default=0) + 1
-        self.rows[number] = (drawing_id, ip, created_at, False)
-        self.sizes[number] = (width, height)
-        return number
+        self.seq += 1
+        self.rows[self.seq] = (drawing_id, ip, created_at, False)
+        self.sizes[self.seq] = (width, height)
+        return self._pos(self.seq)
 
     async def by_number(self, number):
-        r = self.rows.get(number)
-        return Drawing(r[0], number, r[2], *self.sizes.get(number, (None, None))) if r and not r[3] else None
+        ranked = self._ranked()
+        if not 1 <= number <= len(ranked):
+            return None
+        k = ranked[number - 1]
+        r = self.rows[k]
+        return None if r[3] else Drawing(r[0], number, r[2], *self.sizes.get(k, (None, None)))
 
     async def exists_visible(self, drawing_id):
         return any(r[0] == drawing_id and not r[3] for r in self.rows.values())
@@ -40,7 +56,7 @@ class FakeDrawings:
         return not self.fail
 
     def _visible(self):
-        return sorted(n for n, r in self.rows.items() if not r[3])
+        return [i + 1 for i, k in enumerate(self._ranked()) if not self.rows[k][3]]
 
     async def neighbours(self, number):
         vis = self._visible()
@@ -50,35 +66,33 @@ class FakeDrawings:
         return min(self._visible(), default=None)
 
     async def admin_page(self, limit, offset):
-        out = [AdminDrawing(r[0], n, r[2], r[1], r[3], 0, self.reasons.get(n, ""))
-               for n, r in sorted(self.rows.items(), reverse=True)]
+        out = [AdminDrawing(self.rows[k][0], i + 1, self.rows[k][2], self.rows[k][1], self.rows[k][3], 0,
+                            self.reasons.get(k, "")) for i, k in enumerate(self._ranked())][::-1]
         return out[offset:offset + limit]
 
     async def get(self, drawing_id):
-        n = self._find(drawing_id)
-        return Drawing(self.rows[n][0], n, self.rows[n][2]) if n is not None else None
+        k = self._find(drawing_id)
+        return Drawing(self.rows[k][0], self._pos(k), self.rows[k][2]) if k is not None else None
 
     async def exists(self, drawing_id):
-        return any(r[0] == drawing_id for r in self.rows.values())
-
-    def _find(self, drawing_id):
-        return next((n for n, r in self.rows.items() if r[0] == drawing_id), None)
+        return self._find(drawing_id) is not None
 
     async def set_hidden(self, drawing_id, hidden, reason=""):
-        n = self._find(drawing_id)
-        if n is None:
+        k = self._find(drawing_id)
+        if k is None:
             return None
-        r = self.rows[n]
-        self.rows[n] = (r[0], r[1], r[2], hidden)
-        self.reasons[n] = reason
-        return n
+        r = self.rows[k]
+        self.rows[k] = (r[0], r[1], r[2], hidden)
+        self.reasons[k] = reason
+        return self._pos(k)
 
     async def delete(self, drawing_id):
-        n = self._find(drawing_id)
-        if n is None:
+        k = self._find(drawing_id)
+        if k is None:
             return None
-        del self.rows[n]
-        return n
+        pos = self._pos(k)
+        del self.rows[k]
+        return pos
 
 
 class FakeComments:

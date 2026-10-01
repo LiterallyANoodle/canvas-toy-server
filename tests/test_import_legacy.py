@@ -40,12 +40,12 @@ def test_plan_orders_by_time_and_flags_problems(tmp_path, capsys):
             Image.new("RGB", size, "white").save(tmp_path / name)
         else:
             (tmp_path / name).write_text("x")
-    found, problems = plan(tmp_path, UTC, 1)
+    found, problems = plan(tmp_path, UTC)
     assert [p.name for p, _ in found] == ["2024-05-01 09-00-00.png", "2024-05-02 10-00-00.png"]
     assert len(problems) == 2
     assert main([str(tmp_path)]) == 1                      # problems stop it, even as a dry run
     out = capsys.readouterr().out
-    assert "No.   1" in out and "120x80" in out and "mystery.png" in out
+    assert "2024-05-01 09:00:00 UTC" in out and "120x80" in out and "mystery.png" in out
 
 
 def test_dry_run_changes_nothing(tmp_path, capsys):
