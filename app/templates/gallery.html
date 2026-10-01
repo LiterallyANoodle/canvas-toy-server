@@ -82,6 +82,19 @@
 
         .framed .frame { position: relative; }
 
+        /* The auction lot sign (Assets/SOURCE.md). */
+        .lot {
+            display: inline-block;
+            width: 240px;
+            height: 80px;
+            line-height: 80px;
+            background: url(/Assets/wooden_sign.png) no-repeat;
+            font-family: "Times New Roman", Times, serif;
+            font-size: 30px;
+            color: #3b2108;
+            text-shadow: 1px 1px 0 #e8c88a;
+        }
+
         .plaque, .nav, .comments, .message {
             background-color: black;
             padding: 8px;
@@ -116,13 +129,14 @@
                 <img src="/Assets/sword3.gif" alt="">
             </div>
             {% if drawing %}
+            <div><span class="lot">Lot No. {{ drawing.number }}</span></div>
             <div>
                 <span class="framed">
                     <span class="opening{% if standard %} standard{% endif %}"><img class="drawing" style="width: {{ scale_pct }}%" src="/images/{{ drawing.id }}.png" alt="Drawing #{{ drawing.number }}"></span>
                     <img class="frame" src="/Assets/Square-Gold-Frame-PNG-908289183.png" alt="">
                 </span>
             </div>
-            <div class="plaque">No. {{ drawing.number }} &middot; {{ drawing.created_at.strftime("%-d %B %Y") }}</div>
+            <div class="plaque">{{ drawing.created_at.strftime("%-d %B %Y") }}</div>
             <div class="nav">
                 {% if prev %}<a href="/dragon-gallery/image/{{ prev }}">&larr; older</a>{% else %}<span class="off">&larr; older</span>{% endif %}
                 <a href="/draw">draw one!</a>

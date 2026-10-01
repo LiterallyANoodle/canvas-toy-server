@@ -44,8 +44,9 @@ def test_the_gallery_page_shows_the_drawing_in_the_frame(make):
     drawing_id = drawings.rows[2][0]
     assert f'src="/images/{drawing_id}.png"' in r.text
     assert "Square-Gold-Frame-PNG-908289183.png" in r.text and "Dragon Gallery" in r.text
+    assert ">Lot No. 2<" in r.text
     assert 'href="/dragon-gallery/image/1"' in r.text and 'href="/dragon-gallery/image/3"' in r.text
-    for asset in ("Square-Gold-Frame-PNG-908289183.png", "white_marble.jpg", "sword3.gif"):
+    for asset in ("Square-Gold-Frame-PNG-908289183.png", "white_marble.jpg", "sword3.gif", "wooden_sign.png"):
         assert client.get(f"/Assets/{asset}").status_code == 200, asset
 
 
