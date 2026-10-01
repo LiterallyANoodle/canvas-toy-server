@@ -56,20 +56,26 @@
             height: 100%;
         }
 
-        /* The drawing sits in the frame's opening (x 99-799, y 85-813 of the 900x900 PNG). */
+        /* The drawing sits in the frame's opening (x 99-799, y 85-813 of the 900x900 PNG, so
+           701x729). The frame is drawn at 900*500/701 px wide so the opening is exactly 500px
+           and a 500x500 drawing shows 1:1, unscaled (operator, msg 551). On a narrower screen
+           the whole thing shrinks together. */
         .framed {
             position: relative;
             display: inline-block;
+            width: calc(900px * 500 / 701);
             max-width: 100%;
             line-height: 0;
         }
 
+        .framed .frame { width: 100%; height: auto; image-rendering: auto; }
+
         .framed .opening {
             position: absolute;
-            left: 11%;
-            top: 9.4%;
-            width: 78%;
-            height: 81%;
+            left: calc(100% * 99 / 900);
+            top: calc(100% * 85 / 900);
+            width: calc(100% * 701 / 900);
+            height: calc(100% * 729 / 900);
             display: flex;
             align-items: center;
             justify-content: center;

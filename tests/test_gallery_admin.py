@@ -620,3 +620,13 @@ def test_the_jump_box(make):
 def test_no_jump_box_when_empty(make):
     client, *_ = make()
     assert "/dragon-gallery/go" not in client.get("/dragon-gallery").text
+
+
+
+def test_the_frame_is_sized_so_the_drawing_shows_unscaled(make):
+    # Opening 701px of the 900px frame; at 900*500/701 px the opening is 500px (msg 551).
+    client, *_ = make()
+    draw(client)
+    page = client.get("/dragon-gallery/image/1").text
+    assert "width: calc(900px * 500 / 701);" in page and "width: calc(100% * 701 / 900);" in page
+    assert 900 * 500 / 701 * 701 / 900 == 500
