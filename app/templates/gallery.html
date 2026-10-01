@@ -112,6 +112,9 @@
         .nav { display: flex; justify-content: space-between; }
         .nav a { color: gold; }
         .nav .off { color: #555; }
+        .jump { background-color: black; padding: 8px; color: gold; }
+        .jump input { width: 5em; background: #111; color: lightgray; border: 1px solid gold; font: inherit; }
+        .jump button { background: black; color: gold; border: 1px solid gold; padding: 2px 10px; cursor: pointer; }
 
         .comments { text-align: left; }
         .comments h2 { font-family: "UnifrakturMaguntia", cursive; font-weight: 400; color: gold; margin: 4px 0 8px; }
@@ -151,9 +154,21 @@
                 <a href="/draw">draw one!</a>
                 {% if next %}<a href="/dragon-gallery/image/{{ next }}">newer &rarr;</a>{% else %}<span class="off">newer &rarr;</span>{% endif %}
             </div>
+            {% if total %}
+            <form class="jump" method="get" action="/dragon-gallery/go">
+                <label>Go to No. <input name="n" type="number" min="1" max="{{ total }}" inputmode="numeric" required{% if drawing %} placeholder="{{ drawing.number }}"{% endif %}></label>
+                of {{ total }} <button type="submit">Go</button>
+            </form>
+            {% endif %}
             {% else %}
             <div class="message">{{ empty_message }}</div>
             <div class="nav"><span></span><a href="/draw">draw one!</a><span></span></div>
+            {% if total %}
+            <form class="jump" method="get" action="/dragon-gallery/go">
+                <label>Go to No. <input name="n" type="number" min="1" max="{{ total }}" inputmode="numeric" required{% if drawing %} placeholder="{{ drawing.number }}"{% endif %}></label>
+                of {{ total }} <button type="submit">Go</button>
+            </form>
+            {% endif %}
             {% endif %}
         {% if drawing %}
         <div class="comments" id="comments">

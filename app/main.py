@@ -236,16 +236,25 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
             await bans.forget(ended.id)
         return PlainTextResponse(reply)
 
-    def gallery_page(request: Request, status_code=200, **context) -> HTMLResponse:
+    async def gallery_page(request: Request, status_code=200, **context) -> HTMLResponse:
         context.setdefault("drawing", None)
         context.setdefault("empty_message", "")
+        context["total"] = await state["drawings"].count()
         return templates.TemplateResponse(request, "gallery.html", context, status_code=status_code)
+
+    @app.get("/dragon-gallery/go", include_in_schema=False)
+    async def gallery_go(n: str = ""):
+        """The jump box: /dragon-gallery/go?n=12 -> No. 12."""
+        n = n.strip().lstrip("#").removeprefix("No.").strip()
+        if not n.isdigit() or not 1 <= int(n) <= 10**9:
+            return RedirectResponse("/dragon-gallery", status_code=302)
+        return RedirectResponse(f"/dragon-gallery/image/{int(n)}", status_code=302)
 
     @app.get("/dragon-gallery", include_in_schema=False)
     async def gallery_start(request: Request):
         first = await state["drawings"].first_number()
         if first is None:
-            return gallery_page(request, empty_message="No drawings yet. Be the first!")
+            return await gallery_page(request, empty_message="No drawings yet. Be the first!")
         return RedirectResponse(f"/dragon-gallery/image/{first}", status_code=302)
 
     @app.get("/dragon-gallery/d/{drawing_id}", include_in_schema=False)
@@ -253,14 +262,14 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
         """A drawing's permanent address: goes to wherever its number is now."""
         drawing = await state["drawings"].get(drawing_id)
         if drawing is None or not await state["drawings"].exists_visible(drawing_id):
-            return gallery_page(request, status_code=404, empty_message="That drawing isn't here any more.")
+            return await gallery_page(request, status_code=404, empty_message="That drawing isn't here any more.")
         return RedirectResponse(f"/dragon-gallery/image/{drawing.number}", status_code=302)
 
     @app.get("/dragon-gallery/image/{number}", include_in_schema=False)
     async def gallery_image(request: Request, number: int, c: str = "", b: int = 0):
         drawing = await state["drawings"].by_number(number)
         if drawing is None:
-            return gallery_page(request, status_code=404, empty_message=f"There's no drawing No. {number}.")
+            return await gallery_page(request, status_code=404, empty_message=f"There's no drawing No. {number}.")
         prev, next_ = await state["drawings"].neighbours(number)
         notice, notice_bad = COMMENT_NOTICES.get(c, ("", False))
         ban, ban_ended = None, False
@@ -279,7 +288,7 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
         w, h = drawing.width or settings.max_width, drawing.height or settings.max_height
         standard = w >= settings.max_width or h >= settings.max_height
         scale_pct = 100 if standard else round(100 * w / settings.max_width, 2)
-        return gallery_page(request, drawing=drawing, prev=prev, next=next_, standard=standard, scale_pct=scale_pct,
+        return await gallery_page(request, drawing=drawing, prev=prev, next=next_, standard=standard, scale_pct=scale_pct,
                             comments=await state["comments"].for_drawing(drawing.id),
                             notice=notice, notice_bad=notice_bad, max_chars=settings.comment_max_chars,
                             ban=ban, ban_ended=ban_ended, notice_posted=(c == "posted"))

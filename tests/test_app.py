@@ -62,6 +62,9 @@ class FakeDrawings:
         vis = self._visible()
         return (max((n for n in vis if n < number), default=None), min((n for n in vis if n > number), default=None))
 
+    async def count(self):
+        return len(self.rows)
+
     async def first_number(self):
         return min(self._visible(), default=None)
 

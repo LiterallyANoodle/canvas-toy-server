@@ -169,6 +169,12 @@ class Drawings:
             row = await cur.fetchone()
             return (row[0], row[1]) if row else (None, None)
 
+    async def count(self) -> int:
+        """How many drawings exist (hidden ones included: they keep their numbers)."""
+        async with self.pool.connection() as conn:
+            cur = await conn.execute("SELECT count(*) FROM drawings")
+            return int((await cur.fetchone())[0])
+
     async def first_number(self) -> int | None:
         async with self.pool.connection() as conn:
             cur = await conn.execute(RANKED + "SELECT min(pos) FROM ranked WHERE NOT hidden")

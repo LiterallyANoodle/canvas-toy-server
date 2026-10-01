@@ -598,3 +598,25 @@ def test_the_banner_shrinks_on_narrow_screens(make):
     page = client.get("/dragon-gallery/image/1").text
     assert '<meta name="viewport" content="width=device-width, initial-scale=1">' in page
     assert ".title img { flex: 0 1 auto; min-width: 0;" in page and "clamp(" in page
+
+
+
+# --- jump to a number (operator msg 550) -----------------------------------
+def test_the_jump_box(make):
+    client, *_ = make()
+    draw(client, 3)
+    page = client.get("/dragon-gallery/image/2").text
+    assert 'action="/dragon-gallery/go"' in page and "of 3" in page and 'max="3"' in page
+    go = lambda n: client.get("/dragon-gallery/go", params={"n": n}, follow_redirects=False).headers["location"]
+    assert go("3") == "/dragon-gallery/image/3"
+    assert go(" #2 ") == "/dragon-gallery/image/2" and go("No. 1") == "/dragon-gallery/image/1"
+    for bad in ("", "abc", "-1", "0", "1.5", "99999999999", "1;DROP"):
+        assert go(bad) == "/dragon-gallery", bad
+    assert client.get("/dragon-gallery/go", follow_redirects=False).headers["location"] == "/dragon-gallery"
+    missing = client.get("/dragon-gallery/image/42")
+    assert missing.status_code == 404 and 'action="/dragon-gallery/go"' in missing.text
+
+
+def test_no_jump_box_when_empty(make):
+    client, *_ = make()
+    assert "/dragon-gallery/go" not in client.get("/dragon-gallery").text
