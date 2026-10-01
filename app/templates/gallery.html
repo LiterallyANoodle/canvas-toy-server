@@ -115,7 +115,7 @@
 
         .plaque { font-family: "UnifrakturMaguntia", cursive; color: gold; font-size: 1.4em; }
 
-        .nav { display: flex; justify-content: space-between; }
+        .nav { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; }
         .nav a { color: gold; }
         .nav .off { color: #555; }
         .jump { background-color: black; padding: 8px; color: gold; }
@@ -146,39 +146,43 @@
                 <h1><a href="/dragon-gallery">Dragon Gallery</a></h1>
                 <img src="/Assets/sword3.gif" alt="">
             </div>
+            {% macro jump_box() -%}
+            {% if total %}
+            <form class="jump" id="jump" method="get" action="/dragon-gallery/go">
+                <label>Go to No. <input id="jump-n" name="n" type="number" min="1" max="{{ total }}" inputmode="numeric" required{% if drawing %} placeholder="{{ drawing.number }}"{% endif %}></label>
+                of <span id="total">{{ total }}</span> <button type="submit">Go</button>
+            </form>
+            {% endif %}
+            {%- endmacro %}
+            {% macro nav_link(id, n, label) -%}
+            <a id="{{ id }}"{% if n %} href="/dragon-gallery/image/{{ n }}" data-n="{{ n }}"{% else %} class="off"{% endif %}>{{ label|safe }}</a>
+            {%- endmacro %}
             {% if drawing %}
-            <div class="lot">Lot No. {{ drawing.number }}</div>
+            <div class="lot" id="lot">Lot No. {{ drawing.number }}</div>
             <div>
                 <span class="framed">
-                    <span class="opening{% if standard %} standard{% endif %}"><img class="drawing" style="width: {{ scale_pct }}%" src="/images/{{ drawing.id }}.png" alt="Drawing #{{ drawing.number }}"></span>
+                    <span id="opening" class="opening{% if standard %} standard{% endif %}"><img id="drawing" class="drawing" style="width: {{ scale_pct }}%" src="/images/{{ drawing.id }}.png" alt="Drawing #{{ drawing.number }}"></span>
                     <img class="frame" src="/Assets/Square-Gold-Frame-PNG-908289183.png" alt="">
                 </span>
             </div>
-            <div class="plaque">{{ when(drawing.created_at, "date") }}</div>
+            <div class="plaque" id="plaque">{{ when(drawing.created_at, "date") }}</div>
             <div class="nav">
-                {% if prev %}<a href="/dragon-gallery/image/{{ prev }}">&larr; older</a>{% else %}<span class="off">&larr; older</span>{% endif %}
+                {{ nav_link("nav-first", first if first != drawing.number else None, "&laquo; first") }}
+                {{ nav_link("nav-prev", prev, "&larr; older") }}
                 <a href="/draw">draw one!</a>
-                {% if next %}<a href="/dragon-gallery/image/{{ next }}">newer &rarr;</a>{% else %}<span class="off">newer &rarr;</span>{% endif %}
+                {{ nav_link("nav-next", next, "newer &rarr;") }}
+                {{ nav_link("nav-last", last if last != drawing.number else None, "last &raquo;") }}
             </div>
-            {% if total %}
-            <form class="jump" method="get" action="/dragon-gallery/go">
-                <label>Go to No. <input name="n" type="number" min="1" max="{{ total }}" inputmode="numeric" required{% if drawing %} placeholder="{{ drawing.number }}"{% endif %}></label>
-                of {{ total }} <button type="submit">Go</button>
-            </form>
-            {% endif %}
+            {{ jump_box() }}
             {% else %}
             <div class="message">{{ empty_message }}</div>
             <div class="nav"><span></span><a href="/draw">draw one!</a><span></span></div>
-            {% if total %}
-            <form class="jump" method="get" action="/dragon-gallery/go">
-                <label>Go to No. <input name="n" type="number" min="1" max="{{ total }}" inputmode="numeric" required{% if drawing %} placeholder="{{ drawing.number }}"{% endif %}></label>
-                of {{ total }} <button type="submit">Go</button>
-            </form>
-            {% endif %}
+            {{ jump_box() }}
             {% endif %}
         {% if drawing %}
         <div class="comments" id="comments">
             <h2>Comments</h2>
+            <div id="notices">
             {% if notice %}<div class="message{% if notice_bad %} bad{% endif %}">{{ notice }}</div>{% endif %}
             {% if ban %}
             <div class="message bad timeout">
@@ -189,13 +193,16 @@
                 {% elif ban.subject_kind == "drawing" and ban.subject_at %}<br>It was for your drawing sent {{ when(ban.subject_at) }}.{% endif %}
             </div>
             {% endif %}
+            </div>
+            <div id="comment-list">
             {% for c in comments %}
             <div class="comment"><span class="who">{{ c.name or "Anonymous" }} &middot; {{ when(c.created_at) }}</span>
 {{ c.body }}</div>
             {% else %}
             <p class="none">No comments yet.</p>
             {% endfor %}
-            <form method="post" action="/dragon-gallery/image/{{ drawing.number }}/comments">
+            </div>
+            <form id="comment-form" method="post" action="/dragon-gallery/image/{{ drawing.number }}/comments">
                 <input class="name" name="name" maxlength="40" placeholder="Name (Anonymous)" autocomplete="nickname">
                 <textarea name="body" rows="3" maxlength="{{ max_chars }}" required placeholder="Aristocratic critique here"></textarea>
                 <div class="trap" aria-hidden="true"><label>Leave this empty <input name="website" tabindex="-1" autocomplete="off"></label></div>
@@ -206,5 +213,99 @@
         </div>
     </div>
     {{ localize_script() }}
+    {% if drawing %}
+    <script>
+    /* Flip through the gallery without reloading (operator, msg 553). Any failure falls back to
+       a normal page load. Visitor text only ever goes in via textContent, never as HTML. */
+    (function () {
+        var current = {{ drawing.number }}, busy = false;
+
+        function localTime(iso, kind) {
+            var d = new Date(iso);
+            return kind === "date"
+                ? d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })
+                : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+        }
+        function timeEl(iso, kind, fallback) {
+            var t = document.createElement("time");
+            t.dateTime = iso; t.dataset.kind = kind; t.title = fallback;
+            t.textContent = localTime(iso, kind);
+            return t;
+        }
+        function setLink(id, n) {
+            var a = document.getElementById(id);
+            if (n) { a.href = "/dragon-gallery/image/" + n; a.dataset.n = n; a.classList.remove("off"); }
+            else { a.removeAttribute("href"); delete a.dataset.n; a.classList.add("off"); }
+        }
+        function preload(src) {
+            return new Promise(function (ok, bad) { var i = new Image(); i.onload = ok; i.onerror = bad; i.src = src; });
+        }
+        function render(d) {
+            current = d.number;
+            document.title = "Dragon Gallery #" + d.number;
+            document.getElementById("lot").textContent = "Lot No. " + d.number;
+            var img = document.getElementById("drawing");
+            img.src = d.image; img.alt = "Drawing #" + d.number; img.style.width = d.scale_pct + "%";
+            document.getElementById("opening").classList.toggle("standard", d.standard);
+            var plaque = document.getElementById("plaque");
+            plaque.replaceChildren(timeEl(d.created_at, "date", d.date));
+            setLink("nav-first", d.first !== d.number ? d.first : null);
+            setLink("nav-prev", d.prev);
+            setLink("nav-next", d.next);
+            setLink("nav-last", d.last !== d.number ? d.last : null);
+            document.getElementById("notices").replaceChildren();
+            var list = document.getElementById("comment-list");
+            list.replaceChildren();
+            if (!d.comments.length) {
+                var p = document.createElement("p"); p.className = "none"; p.textContent = "No comments yet.";
+                list.appendChild(p);
+            }
+            d.comments.forEach(function (c) {
+                var div = document.createElement("div"), who = document.createElement("span");
+                div.className = "comment"; who.className = "who";
+                who.append((c.name || "Anonymous") + " \u00b7 ", timeEl(c.created_at, "datetime", c.when));
+                div.append(who, "\n" + c.body);
+                list.appendChild(div);
+            });
+            document.getElementById("comment-form").action = "/dragon-gallery/image/" + d.number + "/comments";
+            var jump = document.getElementById("jump-n");
+            if (jump) { jump.placeholder = d.number; jump.max = d.total; jump.value = ""; }
+            var total = document.getElementById("total");
+            if (total) total.textContent = d.total;
+        }
+        function go(n, push) {
+            if (busy) return;
+            busy = true;
+            fetch("/dragon-gallery/api/image/" + n)
+                .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+                .then(function (d) { return preload(d.image).then(function () { return d; }); })
+                .then(function (d) {
+                    render(d);
+                    if (push) history.pushState({ n: d.number }, "", "/dragon-gallery/image/" + d.number);
+                })
+                .catch(function () { location.href = "/dragon-gallery/image/" + n; })
+                .finally(function () { busy = false; });
+        }
+
+        history.replaceState({ n: current }, "", location.href);
+        document.addEventListener("click", function (e) {
+            var a = e.target.closest && e.target.closest("a[data-n]");
+            if (!a || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+            e.preventDefault();
+            go(a.dataset.n, true);
+        });
+        var jumpForm = document.getElementById("jump");
+        if (jumpForm) jumpForm.addEventListener("submit", function (e) {
+            var n = document.getElementById("jump-n").value.trim();
+            if (!/^[0-9]+$/.test(n) || +n < 1) return;          // let the server sort it out
+            e.preventDefault();
+            go(+n, true);
+        });
+        window.addEventListener("popstate", function (e) {
+            if (e.state && e.state.n) go(e.state.n, false);
+        });
+    })();
+    </script>
+    {% endif %}
 </body>
 </html>

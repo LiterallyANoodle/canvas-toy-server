@@ -265,12 +265,40 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
             return await gallery_page(request, status_code=404, empty_message="That drawing isn't here any more.")
         return RedirectResponse(f"/dragon-gallery/image/{drawing.number}", status_code=302)
 
+    async def drawing_view(drawing) -> dict:
+        """Everything the page shows about one drawing (used by the page and by its JSON)."""
+        repo = state["drawings"]
+        prev, next_ = await repo.neighbours(drawing.number)
+        # Shown at its real size against the standard canvas (an odd-sized one looks small in the frame).
+        w, h = drawing.width or settings.max_width, drawing.height or settings.max_height
+        standard = w >= settings.max_width or h >= settings.max_height
+        return {"drawing": drawing, "prev": prev, "next": next_, "first": await repo.first_number(),
+                "last": await repo.last_number(), "standard": standard,
+                "scale_pct": 100 if standard else round(100 * w / settings.max_width, 2),
+                "comments": await state["comments"].for_drawing(drawing.id)}
+
+    @app.get("/dragon-gallery/api/image/{number}", include_in_schema=False)
+    async def gallery_image_json(number: int):
+        """One drawing's page data, for flipping through the gallery without a reload (msg 553).
+        Only what the page shows publicly: no IPs, no ids beyond the image's own."""
+        drawing = await state["drawings"].by_number(number)
+        if drawing is None:
+            return JSONResponse({"error": "no such drawing"}, status_code=404)
+        v = await drawing_view(drawing)
+        return {
+            "number": drawing.number, "image": f"/images/{drawing.id}.png",
+            "created_at": drawing.created_at.isoformat(), "date": drawing.created_at.strftime("%-d %B %Y"),
+            "standard": v["standard"], "scale_pct": v["scale_pct"], "total": await state["drawings"].count(),
+            "first": v["first"], "prev": v["prev"], "next": v["next"], "last": v["last"],
+            "comments": [{"name": c.name, "body": c.body, "created_at": c.created_at.isoformat(),
+                          "when": f"{c.created_at:%Y-%m-%d %H:%M} UTC"} for c in v["comments"]],
+        }
+
     @app.get("/dragon-gallery/image/{number}", include_in_schema=False)
     async def gallery_image(request: Request, number: int, c: str = "", b: int = 0):
         drawing = await state["drawings"].by_number(number)
         if drawing is None:
             return await gallery_page(request, status_code=404, empty_message=f"There's no drawing No. {number}.")
-        prev, next_ = await state["drawings"].neighbours(number)
         notice, notice_bad = COMMENT_NOTICES.get(c, ("", False))
         ban, ban_ended = None, False
         ip = visitor_ip(request)
@@ -284,14 +312,9 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
                 else:
                     await state["bans"].mark_told(found.id)
                 notice = ""
-        # Shown at its real size against the standard canvas (an odd-sized one looks small in the frame).
-        w, h = drawing.width or settings.max_width, drawing.height or settings.max_height
-        standard = w >= settings.max_width or h >= settings.max_height
-        scale_pct = 100 if standard else round(100 * w / settings.max_width, 2)
-        return await gallery_page(request, drawing=drawing, prev=prev, next=next_, standard=standard, scale_pct=scale_pct,
-                            comments=await state["comments"].for_drawing(drawing.id),
-                            notice=notice, notice_bad=notice_bad, max_chars=settings.comment_max_chars,
-                            ban=ban, ban_ended=ban_ended, notice_posted=(c == "posted"))
+        return await gallery_page(request, **await drawing_view(drawing),
+                                  notice=notice, notice_bad=notice_bad, max_chars=settings.comment_max_chars,
+                                  ban=ban, ban_ended=ban_ended, notice_posted=(c == "posted"))
 
     @app.post("/dragon-gallery/image/{number}/comments", include_in_schema=False)
     async def add_comment(request: Request, number: int):

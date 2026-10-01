@@ -158,6 +158,7 @@ def test_numbers_are_positions_by_age(repo):
         _run(loop, drawings.add_many([(uuid.uuid4(), now, 1, 1), (old[0][0], now, 1, 1)]))
     assert len(_run(loop, drawings.admin_page(50, 0))) == 5
     assert _run(loop, drawings.count()) == 5
+    assert _run(loop, drawings.last_number()) == 5
 
 
 def test_names_reasons_and_the_mod_log(repo):

@@ -68,6 +68,9 @@ class FakeDrawings:
     async def first_number(self):
         return min(self._visible(), default=None)
 
+    async def last_number(self):
+        return max(self._visible(), default=None)
+
     async def admin_page(self, limit, offset):
         out = [AdminDrawing(self.rows[k][0], i + 1, self.rows[k][2], self.rows[k][1], self.rows[k][3], 0,
                             self.reasons.get(k, "")) for i, k in enumerate(self._ranked())][::-1]

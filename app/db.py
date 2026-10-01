@@ -181,6 +181,12 @@ class Drawings:
             row = await cur.fetchone()
             return row[0] if row else None
 
+    async def last_number(self) -> int | None:
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(RANKED + "SELECT max(pos) FROM ranked WHERE NOT hidden")
+            row = await cur.fetchone()
+            return row[0] if row else None
+
     # --- admin ---
     async def admin_page(self, limit: int, offset: int) -> list[AdminDrawing]:
         """Newest first, hidden ones included."""

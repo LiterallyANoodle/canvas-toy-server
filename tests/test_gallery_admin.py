@@ -425,7 +425,7 @@ def test_the_lot_sign_and_comments_sit_inside_the_column(make):
     draw(client)
     page = client.get("/dragon-gallery/image/1").text
     content = page.index('<div class="content">')
-    assert content < page.index('<div class="lot">') < page.index('<div class="comments"')
+    assert content < page.index('<div class="lot"') < page.index('<div class="comments"')
     assert "background-size: 100% 100%" in page
 
 
@@ -606,7 +606,7 @@ def test_the_jump_box(make):
     client, *_ = make()
     draw(client, 3)
     page = client.get("/dragon-gallery/image/2").text
-    assert 'action="/dragon-gallery/go"' in page and "of 3" in page and 'max="3"' in page
+    assert 'action="/dragon-gallery/go"' in page and '<span id="total">3</span>' in page and 'max="3"' in page
     go = lambda n: client.get("/dragon-gallery/go", params={"n": n}, follow_redirects=False).headers["location"]
     assert go("3") == "/dragon-gallery/image/3"
     assert go(" #2 ") == "/dragon-gallery/image/2" and go("No. 1") == "/dragon-gallery/image/1"
@@ -630,3 +630,44 @@ def test_the_frame_is_sized_so_the_drawing_shows_unscaled(make):
     page = client.get("/dragon-gallery/image/1").text
     assert "width: calc(900px * 500 / 701);" in page and "width: calc(100% * 701 / 900);" in page
     assert 900 * 500 / 701 * 701 / 900 == 500
+
+
+
+# --- flipping without a reload, first/last (operator msg 553) ---------------
+def test_first_and_last_links(make):
+    client, drawings, *_ = make()
+    draw(client, 4)
+    drawings.rows[4] = drawings.rows[4][:3] + (True,)                  # last visible is No. 3
+    mid = client.get("/dragon-gallery/image/2").text
+    assert 'id="nav-first" href="/dragon-gallery/image/1" data-n="1"' in mid
+    assert 'id="nav-last" href="/dragon-gallery/image/3" data-n="3"' in mid
+    first = client.get("/dragon-gallery/image/1").text
+    assert '<a id="nav-first" class="off">' in first and '<a id="nav-prev" class="off">' in first
+    last = client.get("/dragon-gallery/image/3").text
+    assert '<a id="nav-last" class="off">' in last and '<a id="nav-next" class="off">' in last
+
+
+def test_the_page_json_has_what_the_page_shows_and_no_more(make):
+    client, drawings, *_ = make()
+    draw(client, 3)
+    comment(client, 2, "<b>hi</b>", name="Sir Dragon")
+    j = client.get("/dragon-gallery/api/image/2").json()
+    assert j["number"] == 2 and j["image"] == f"/images/{drawings.rows[2][0]}.png"
+    assert (j["first"], j["prev"], j["next"], j["last"], j["total"]) == (1, 1, 3, 3, 3)
+    assert j["standard"] is True and j["scale_pct"] == 100
+    (c,) = j["comments"]
+    assert c["name"] == "Sir Dragon" and c["body"] == "<b>hi</b>" and set(c) == {"name", "body", "created_at", "when"}
+    assert IP not in client.get("/dragon-gallery/api/image/2").text
+    assert client.get("/dragon-gallery/api/image/9").status_code == 404
+    drawings.rows[3] = drawings.rows[3][:3] + (True,)
+    assert client.get("/dragon-gallery/api/image/3").status_code == 404
+
+
+def test_the_flip_script_uses_text_not_html(make):
+    client, *_ = make()
+    draw(client)
+    page = client.get("/dragon-gallery/image/1").text
+    script = page[page.index("Flip through the gallery"):]
+    assert "/dragon-gallery/api/image/" in script and "history.pushState" in script
+    assert "innerHTML" not in script and "insertAdjacentHTML" not in script and "outerHTML" not in script
+    assert 'id="comment-list"' in page and 'id="comment-form"' in page and 'id="lot"' in page
