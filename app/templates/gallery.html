@@ -118,7 +118,8 @@
         .nav { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; }
         .nav a { color: gold; }
         .nav .off { color: #555; }
-        .jump { background-color: black; padding: 8px; color: gold; }
+        /* a <form>, so the ".container div" margin misses it: same 5px by hand (msg 555) */
+        .jump { background-color: black; padding: 8px; color: gold; margin: 5px; }
         .jump input { width: 5em; background: #111; color: lightgray; border: 1px solid gold; font: inherit; }
         .jump button { background: black; color: gold; border: 1px solid gold; padding: 2px 10px; cursor: pointer; }
 

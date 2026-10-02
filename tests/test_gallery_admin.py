@@ -671,3 +671,12 @@ def test_the_flip_script_uses_text_not_html(make):
     assert "/dragon-gallery/api/image/" in script and "history.pushState" in script
     assert "innerHTML" not in script and "insertAdjacentHTML" not in script and "outerHTML" not in script
     assert 'id="comment-list"' in page and 'id="comment-form"' in page and 'id="lot"' in page
+
+
+def test_the_jump_box_lines_up_with_the_other_blocks(make):
+    # The column's blocks get margin from ".container div"; the jump box is a <form> (msg 555).
+    client, *_ = make()
+    draw(client)
+    page = client.get("/dragon-gallery/image/1").text
+    assert ".container div {\n            margin: 5px;" in page
+    assert ".jump { background-color: black; padding: 8px; color: gold; margin: 5px; }" in page
