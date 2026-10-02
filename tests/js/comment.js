@@ -1,9 +1,10 @@
 const { JSDOM } = require("jsdom");
+const FIX = process.env.JS_FIXTURES;                 // written by tests/test_browser.py
 const fs = require("fs");
-const data = JSON.parse(fs.readFileSync(__dirname + "/api2.json"));
+const data = JSON.parse(fs.readFileSync(FIX + "/api2.json"));
 let posted = false; const posts = [];
 const audios = [];
-const dom = new JSDOM(fs.readFileSync(__dirname + "/decor.html", "utf8"), {
+const dom = new JSDOM(fs.readFileSync(FIX + "/decor.html", "utf8"), {
   url: "https://canvas.example/dragon-gallery/image/1", runScripts: "dangerously",
   beforeParse(w) {
     w.fetch = (url, opts = {}) => {

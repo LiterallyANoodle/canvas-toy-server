@@ -1,7 +1,8 @@
 const { JSDOM } = require("jsdom"); const fs = require("fs");
-const api = JSON.parse(fs.readFileSync(__dirname + "/refresh_api.json"));
+const FIX = process.env.JS_FIXTURES;                 // written by tests/test_browser.py
+const api = JSON.parse(fs.readFileSync(FIX + "/refresh_api.json"));
 const audios = []; const gets = [];
-const dom = new JSDOM(fs.readFileSync(__dirname + "/refresh.html", "utf8"), { url: "https://canvas.example/dragon-gallery/image/1", runScripts: "dangerously",
+const dom = new JSDOM(fs.readFileSync(FIX + "/refresh.html", "utf8"), { url: "https://canvas.example/dragon-gallery/image/1", runScripts: "dangerously",
   beforeParse(w) {
     w.fetch = (u, o = {}) => { gets.push(u); const n = u.split("/").pop(); return Promise.resolve(api[n] ? { ok: true, status: 200, json: () => Promise.resolve(api[n]) } : { ok: false, status: 404 }); };
     w.Image = class { set src(v) { setTimeout(() => this.onload && this.onload(), 0); } };

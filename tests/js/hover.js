@@ -1,6 +1,7 @@
 const { JSDOM } = require("jsdom"); const fs = require("fs");
-const api = JSON.parse(fs.readFileSync(__dirname + "/api2.json")).before;
-const dom = new JSDOM(fs.readFileSync(__dirname + "/decor.html", "utf8"), { url: "https://canvas.example/dragon-gallery/image/1", runScripts: "dangerously",
+const FIX = process.env.JS_FIXTURES;                 // written by tests/test_browser.py
+const api = JSON.parse(fs.readFileSync(FIX + "/api2.json")).before;
+const dom = new JSDOM(fs.readFileSync(FIX + "/decor.html", "utf8"), { url: "https://canvas.example/dragon-gallery/image/1", runScripts: "dangerously",
   beforeParse(w) { w.fetch = (u) => { const n = u.split("/").pop(); return Promise.resolve({ ok: true, json: () => Promise.resolve(api[n]) }); };
     w.Image = class { set src(v) { setTimeout(() => this.onload && this.onload(), 0); } };
     w.Audio = class { constructor() { this.paused = true; } addEventListener() {} load() {} play() { return Promise.resolve(); } pause() {} getAttribute() { return null; } }; } });

@@ -1,7 +1,8 @@
 const { JSDOM } = require("jsdom");
+const FIX = process.env.JS_FIXTURES;                 // written by tests/test_browser.py
 const fs = require("fs");
 function load(file, narrowMatches) {
-  return new JSDOM(fs.readFileSync(__dirname + "/" + file, "utf8"), {
+  return new JSDOM(fs.readFileSync(FIX + "/" + file, "utf8"), {
     url: "https://canvas.example/dragon-gallery/image/1", runScripts: "dangerously",
     beforeParse(w) {
       w.innerHeight = 700;

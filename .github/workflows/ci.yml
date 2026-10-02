@@ -17,12 +17,20 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres
+      REQUIRE_JS_TESTS: "1"            # the jsdom page-script checks fail, not skip, without Node (T-0062)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: tests/js/package-lock.json
       - run: pip install -r requirements-dev.txt
+      - run: npm ci --no-audit --no-fund
+        working-directory: tests/js
       - run: python -m pytest -q tests
 
   image:

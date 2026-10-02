@@ -1,5 +1,5 @@
 const { JSDOM, VirtualConsole } = require("jsdom"); const fs = require("fs");
-const html = fs.readFileSync("/home/orchestrator/canvas-toy-server/app/static/draw.html", "utf8");
+const html = fs.readFileSync(__dirname + "/../../app/static/draw.html", "utf8");
 function run(resp) {
   return new Promise((done) => {
     const alerts = [], navs = [];

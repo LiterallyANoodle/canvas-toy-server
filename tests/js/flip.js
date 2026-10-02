@@ -1,7 +1,8 @@
 const { JSDOM } = require("jsdom");
+const FIX = process.env.JS_FIXTURES;                 // written by tests/test_browser.py
 const fs = require("fs");
-const api = JSON.parse(fs.readFileSync(__dirname + "/api.json"));
-const html = fs.readFileSync(__dirname + "/page1.html", "utf8");
+const api = JSON.parse(fs.readFileSync(FIX + "/api.json"));
+const html = fs.readFileSync(FIX + "/page1.html", "utf8");
 const fetched = [];
 const dom = new JSDOM(html, {
   url: "https://canvas.example/dragon-gallery/image/1", runScripts: "dangerously", pretendToBeVisual: true,
