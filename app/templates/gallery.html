@@ -119,6 +119,20 @@
 
         .title a { color: gold; text-decoration: none; }
 
+        /* Make it obvious that visitors can draw too (operator, msgs 643/644). */
+        .cta a {
+            display: block; padding: 10px 6px;
+            background: black; color: gold; border: 3px double gold;
+            font-family: "UnifrakturMaguntia", cursive; font-size: clamp(1.15em, 4.5vw, 1.6em);
+            text-decoration: none;
+            animation: cta-glow 2.4s ease-in-out infinite;
+        }
+        .cta a:hover { background: #2a1d00; }
+        @keyframes cta-glow {
+            0%, 100% { box-shadow: 0 0 4px rgba(255, 215, 0, 0.4); }
+            50% { box-shadow: 0 0 14px rgba(255, 215, 0, 0.9); }
+        }
+
         /* On a narrow (phone) screen the swords shrink and the title scales, instead of the
            banner running off to the right (operator, msg 548). */
         .title img { flex: 0 1 auto; min-width: 0; width: 30%; max-width: 250px; height: auto; }
@@ -243,6 +257,7 @@
                 <h1><a href="/dragon-gallery">Dragon Gallery</a></h1>
                 <img src="{{ asset('/Assets/sword3.gif') }}" alt="">
             </div>
+            <div class="cta"><a href="/draw">&#9998; Send the dragon a drawing of your own! &#9998;</a></div>
             {% macro jump_box() -%}
             {% if total %}
             <form class="jump" id="jump" method="get" action="/dragon-gallery/go">

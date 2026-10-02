@@ -77,6 +77,20 @@
             user-select: none;
         }
 
+        /* The way to the gallery, as obvious as the canvas (operator, msg 644). */
+        .gallery-link {
+            display: block; box-sizing: border-box; width: 504px; max-width: 100%;
+            margin: 8px 0; padding: 8px; text-align: center; text-decoration: none;
+            font-family: Ciircuit; font-size: 1.2em;
+            color: rgb(129, 5, 53);
+            background: linear-gradient(0deg, rgba(34,193,195,1) 0%, rgb(45, 253, 97) 100%);
+            border: 2px solid purple;
+        }
+        .gallery-link:hover {
+            background: linear-gradient(0deg, rgb(121, 253, 45) 0%, rgba(34,193,195,1) 100%);
+            color: rgb(211, 22, 195);
+        }
+
         .button-container button:hover {
             cursor: pointer;
             background: linear-gradient(0deg, rgb(121, 253, 45) 0%, rgba(34,193,195,1) 100%);
@@ -381,6 +395,7 @@
 </head>
 <body onload="init()">
     <div class="center">
+        <a class="gallery-link" href="/dragon-gallery">See everyone's drawings in the Dragon Gallery &rarr;</a>
         <div class="canv-container">
             <canvas id="canv" width="500" height="500"></canvas>
             <div class="button-container">
@@ -418,7 +433,7 @@
 	    <p>Sure, you can copy it for yourself, but do not ask for help in deploying it. ( You're a big boy, you can figure it out :] )</p>
 	</div>
 	<div class="info-container">
-	    <h2>Last Updated October 1, 2026</h2>
+	    <h2>Last Updated October 2, 2026</h2>
 	</div>
     </div>
 </body>
