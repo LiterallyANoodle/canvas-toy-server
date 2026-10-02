@@ -874,3 +874,17 @@ def test_the_carpet_is_pre_scaled_nearest_neighbour():
             for bx in range(0, im.width, 8):
                 c = px[bx, by]
                 assert all(px[bx + dx, by + dy] == c for dx in range(8) for dy in range(8)), (name, bx, by)
+
+
+
+def test_hovering_the_date_shows_the_time(make):
+    # msg 635: the plaque's date carries the full time on hover (UTC without JS, local with it).
+    import re
+    client, drawings, *_ = make()
+    draw(client)
+    page = client.get("/dragon-gallery/image/1").text
+    plaque = page[page.index('id="plaque"'):]
+    plaque = plaque[:plaque.index("</time>")]
+    when = drawings.rows[1][2].astimezone(timezone.utc)
+    assert f'title="{when:%Y-%m-%d %H:%M:%S} UTC"' in plaque
+    assert 'dateStyle: "full", timeStyle: "medium"' in page

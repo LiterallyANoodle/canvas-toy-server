@@ -390,7 +390,10 @@
         }
         function timeEl(iso, kind, fallback) {
             var t = document.createElement("time");
-            t.dateTime = iso; t.dataset.kind = kind; t.title = fallback;
+            t.dateTime = iso; t.dataset.kind = kind;
+            t.title = kind === "date"                          // hover a date: its full local date and time
+                ? new Date(iso).toLocaleString(undefined, { dateStyle: "full", timeStyle: "medium" })
+                : fallback;
             t.textContent = localTime(iso, kind);
             return t;
         }
