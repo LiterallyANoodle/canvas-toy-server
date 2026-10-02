@@ -4,9 +4,11 @@ on:
     branches: [master, "T-*"]
   pull_request:
 
+# Runners are pinned rather than ubuntu-latest, which moves to Ubuntu 26 from 2026-10-19:
+# a runner change should be its own commit with its own green run, not a surprise (T-0068).
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:18
@@ -19,11 +21,11 @@ jobs:
       TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres
       REQUIRE_JS_TESTS: "1"            # the jsdom page-script checks fail, not skip, without Node (T-0062)
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
@@ -37,19 +39,19 @@ jobs:
     # Every run builds the image (so a broken Dockerfile shows up on the branch);
     # only master pushes it to ghcr.io.
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/login-action@v4
         if: github.ref == 'refs/heads/master'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           push: ${{ github.ref == 'refs/heads/master' }}
