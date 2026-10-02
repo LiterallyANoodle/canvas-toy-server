@@ -17,9 +17,10 @@
 
 Sounds and music (`../sounds/`, `../music/`):
 
-- `sounds/hmmm.mp3`: Freedoom's `dsposact.wav` (the free counterpart of DOOM's zombie grunt),
-  stretched to about 1.9x its length with the pitch kept (ffmpeg atempo) and faded out. Freedoom is BSD-licensed; its notice is in
-  `sounds/FREEDOOM-COPYING.txt`, as the licence requires.
+- `sounds/hmmm.mp3`: Freedoom's `dsplpain.wav` (the free counterpart of DOOM's player pain
+  grunt), stretched to about 3.2x its length with the pitch kept (ffmpeg atempo 0.5 x 0.6)
+  and faded out. Freedoom is BSD-licensed; its notice is in `sounds/FREEDOOM-COPYING.txt`,
+  as the licence requires.
 - `music/spring.mp3` ... `winter.mp3`: Vivaldi, The Four Seasons, Op. 8 Nos. 1-4, The Modena
   Chamber Orchestra, from Musopen (musopen.org), public domain (Public Domain Mark). Tags
   stripped, audio untouched.
