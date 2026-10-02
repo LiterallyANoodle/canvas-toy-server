@@ -30,22 +30,33 @@
 
         /* The red carpet with gold trim behind the whole column (operator, msg 573). Drawn at
            24px and shown at 2x, crunchy on purpose. */
+        /* Gold trim on all four sides from one 9-slice image (12px corners, shown 2x), red
+           inside it, and a tassel off each corner (operator, msg 602). The column's content
+           keeps its 648px: 748 = 648 + 2 x 24 trim + 2 x 26 red. */
         .container {
             position: relative;
             box-sizing: border-box;
-            padding: 6px 26px;
-            background: url(/Assets/carpet_tile.png) repeat;
+            max-width: 748px;
+            margin: 64px auto;
+            padding: 10px 26px;
+            border: 24px solid transparent;
+            border-image: url(/Assets/carpet_border.png) 12 round;
+            background: url(/Assets/carpet_tile.png) repeat padding-box;
             background-size: 48px 48px;
             image-rendering: pixelated;
         }
-        .container::before, .container::after {
-            content: ""; position: absolute; top: 0; bottom: 0; width: 24px;
-            background: url(/Assets/gold_trim.png) repeat-y;
-            background-size: 24px 32px;
-            image-rendering: pixelated;
+        .tassel {
+            position: absolute; width: 20px; height: 44px;
+            background: url(/Assets/tassel.png) no-repeat; background-size: 20px 44px;
+            image-rendering: pixelated; pointer-events: none;
         }
-        .container::before { left: 0; }
-        .container::after { right: 0; transform: scaleX(-1); }
+        .tassel.tl, .tassel.tr { top: -66px; transform: scaleY(-1); }
+        .tassel.bl, .tassel.br { bottom: -66px; }
+        .tassel.tl, .tassel.bl { left: -22px; }            /* centred on the 24px corner block */
+        .tassel.tr, .tassel.br { right: -22px; }
+        @media (max-width: 640px) {
+            .container { padding: 6px 4px; margin: 56px auto; }
+        }
         .container img.frame, .container .drawing { image-rendering: auto; }
 
         /* The two glowing corners: the quartet plays the Four Seasons; Spike's table turns the
@@ -212,6 +223,7 @@
         <button id="spike" class="corner right" type="button" title="A glass of wine?" aria-pressed="false"><img src="/Assets/spike_table.png" alt="Spike in a tuxedo by a table of red wine glasses"></button>
     </div>
     <div class="container">
+        <span class="tassel tl"></span><span class="tassel tr"></span><span class="tassel bl"></span><span class="tassel br"></span>
         <div class="content">
             <div class="title">
                 <img src="/Assets/sword3.gif" style="transform: scaleX(-1);" alt="">

@@ -738,7 +738,7 @@ def test_right_click_reaches_the_drawing_not_the_frame(make):
 # --- the gussied-up gallery (operator msg 573) -------------------------------
 def test_decor_assets_are_served(make):
     client, *_ = make()
-    for path in ("/Assets/carpet_tile.png", "/Assets/gold_trim.png", "/Assets/quartet.png",
+    for path in ("/Assets/carpet_tile.png", "/Assets/carpet_border.png", "/Assets/tassel.png", "/Assets/quartet.png",
                  "/Assets/spike_table.png", "/Assets/wine_cursor.png", "/sounds/hmmm.mp3",
                  "/sounds/FREEDOOM-COPYING.txt"):
         assert client.get(path).status_code == 200, path
@@ -752,7 +752,8 @@ def test_the_gallery_has_the_carpet_and_both_corners(make):
     draw(client)
     for page in (client.get("/dragon-gallery/image/1").text, client.get("/dragon-gallery/image/9").text):
         assert 'id="quartet"' in page and 'id="spike"' in page
-        assert "carpet_tile.png" in page and "gold_trim.png" in page and "wine_cursor.png" in page
+        assert "carpet_tile.png" in page and "carpet_border.png" in page and "wine_cursor.png" in page
+        assert page.count('class="tassel ') == 4
         assert '"spring", "summer", "autumn", "winter"' in page and "/sounds/hmmm.mp3" in page
 
 
