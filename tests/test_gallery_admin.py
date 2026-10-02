@@ -763,3 +763,13 @@ def test_the_freedoom_notice_ships_with_the_sound():
     credits = Path("app/static/Assets/SOURCE.md").read_text()
     for name in ("quartet.png", "papapishu", "CC0", "Freedoom", "Modena", "spike_table.png"):
         assert name in credits, name
+
+
+def test_corner_images_show_at_whole_multiples(make):
+    from PIL import Image
+    client, *_ = make()
+    page = client.get("/dragon-gallery").text
+    for side, name in (("left", "quartet"), ("right", "spike_table")):
+        w = Image.open(f"app/static/Assets/{name}.png").width
+        assert f".corner.{side} img {{ width: {2 * w}px; }}" in page, name
+        assert f".corner.{side} img {{ width: {w}px; }}" in page, name
