@@ -18,11 +18,10 @@
 
 Sounds and music (`../sounds/`, `../music/`):
 
-- `sounds/hmmm.mp3`: Freedoom's `dsplpain.wav` (the free counterpart of DOOM's player pain
-  grunt): its first 0.6 s, pitched down six semitones (resampled), time-stretched with
-  Rubber Band (ffmpeg rubberband, tempo 0.235, long window, smooth transients) so the grunt
-  lasts about 1.7 s, low-passed at 4.2 kHz to smooth it, then faded out. Freedoom is
-  BSD-licensed; its notice is in `sounds/FREEDOOM-COPYING.txt`, as the licence requires.
+- `sounds/hmmm.mp3`: the operator's own edit (2026-10-02, "freedoom_dsplpain_3.45s_crunchy_clean")
+  of Freedoom's `dsplpain.wav` (the free counterpart of DOOM's player pain grunt), converted to
+  MP3 unchanged otherwise. Freedoom is BSD-licensed; its notice is in
+  `sounds/FREEDOOM-COPYING.txt`, as the licence requires.
 - `music/spring.mp3` ... `winter.mp3`: Vivaldi, The Four Seasons, Op. 8 Nos. 1-4, The Modena
   Chamber Orchestra, from Musopen (musopen.org), public domain (Public Domain Mark). Tags
   stripped, audio untouched.
