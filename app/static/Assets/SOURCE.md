@@ -6,9 +6,10 @@
   https://opengameart.org/content/game-wood-panel. Cropped to the lower board, its ragged
   bottom edge mirrored onto the top, shrunk to 240x80, darkened (so gold text reads on it) and
   cut to 20 colours (T-0049).
-- `quartet.png`: a photo of a string quartet's instruments supplied by the operator
-  (2026-10-02); black background cut out, shrunk and saved through a quality-35 JPEG to match
-  the Spike picture. Sourced by the operator; used at his choice.
+- `quartet.png`: a photo of a string quartet's instruments supplied by the operator, which he
+  then cleaned up himself after the first cut-out (2026-10-02, msg 624); shrunk to 128x154
+  and saved through a quality-35 JPEG to match the Spike picture. Sourced by the operator;
+  used at his choice.
 - `carpet_tile.png`, `carpet_border.png`, `tassel.png`, `wine_cursor.png`: drawn pixel by pixel for this
   project (T-0049).
 - `spike_table.png`: the operator's own photoshop (2026-10-02) of Spike by a table of red wine
