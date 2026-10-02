@@ -325,44 +325,65 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
 
     @app.post("/dragon-gallery/image/{number}/comments", include_in_schema=False)
     async def add_comment(request: Request, number: int):
-        def back(key: str, ban_id: int = 0) -> RedirectResponse:
-            extra = f"&b={ban_id}" if ban_id else ""
-            return RedirectResponse(f"/dragon-gallery/image/{number}?c={key}{extra}#comments", status_code=303)
+        # The page's own script posts with this header and gets JSON back, so posting a comment
+        # doesn't reload the page (and stop the music) (operator, msg 609). Plain form posts
+        # still get the redirect.
+        wants_json = request.headers.get("x-requested-with") == "fetch"
+
+        async def back(key: str, ban=None):
+            if not wants_json:
+                extra = f"&b={ban.id}" if ban else ""
+                return RedirectResponse(f"/dragon-gallery/image/{number}?c={key}{extra}#comments", status_code=303)
+            text, bad = COMMENT_NOTICES.get(key, ("", False))
+            out = {"c": key, "notice": text, "bad": bad}
+            if ban is not None:
+                # This request comes from the banned visitor, so the details are theirs to see.
+                # Same told-once rules as the page: an active ban is marked told, an ended one erased.
+                ended = ban.expires_at <= datetime.now(timezone.utc)
+                out["ban"] = {
+                    "ended": ended, "until": ban.expires_at.isoformat(),
+                    "until_text": f"{ban.expires_at.astimezone(timezone.utc):%Y-%m-%d %H:%M} UTC",
+                    "reason": ban.reason, "subject_kind": ban.subject_kind, "subject_text": ban.subject_text,
+                    "subject_at": ban.subject_at.isoformat() if ban.subject_at else None,
+                    "subject_at_text": f"{ban.subject_at.astimezone(timezone.utc):%Y-%m-%d %H:%M} UTC" if ban.subject_at else None,
+                }
+                await (state["bans"].forget(ban.id) if ended else state["bans"].mark_told(ban.id))
+            return JSONResponse(out)
 
         ip = visitor_ip(request)
         if ip is None:
-            return back("error")
+            return await back("error")
         drawing = await state["drawings"].by_number(number)
         if drawing is None:
             raise HTTPException(404)
         ban = await state["bans"].active_for(ip, "comment")
         if ban is not None:
-            return back("banned", ban.id)
+            return await back("banned", ban)
         # The cap is enforced while reading, whatever Content-Length claims (D-0007 #2).
         cap = 4 * settings.comment_max_chars + 1024
         raw = bytearray()
         async for chunk in request.stream():
             raw += chunk
             if len(raw) > cap:
-                return back("long")
+                return await back("long")
         form = parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True, max_num_fields=10)
         if form.get("website", [""])[0]:              # the hidden field only bots fill in
-            return back("posted")
+            return await back("posted")
         body = clean_comment(form.get("body", [""])[0])
         if not body:
-            return back("empty")
+            return await back("empty")
         if len(body) > settings.comment_max_chars:
-            return back("long")
+            return await back("long")
         if not comment_limiter.allow(ip):
-            return back("slow")
+            return await back("slow")
         try:
             await state["comments"].add(drawing.id, body, ip, datetime.now(timezone.utc),
                                         clean_name(form.get("name", [""])[0]))
         except Exception:
             log.exception("could not record comment")
-            return back("error")
+            return await back("error")
         ended = await state["bans"].ended_untold_for(ip, "comment")
-        return back("posted", ended.id if ended else 0)
+        return await back("posted", ended)
 
     @app.get("/images/{name}")
     async def image_file(name: str):

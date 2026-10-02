@@ -306,7 +306,7 @@
     /* The quartet plays the Four Seasons from Spring, round and round; Spike hands you a glass
        of wine, and every click is then a ponderous DOOM "hmmmm" (operator, msg 573). */
     (function () {
-        var seasons = ["spring", "summer", "autumn", "winter"], track = 0;
+        var seasons = ["spring", "summer", "autumn", "winter"], track = -1;
         var music = new Audio(), quartet = document.getElementById("quartet");
         music.preload = "none";
         music.addEventListener("ended", function () {
@@ -318,7 +318,9 @@
         quartet.addEventListener("click", function () {
             playing = !playing;
             if (playing) {
-                if (!music.getAttribute("src")) music.src = "/music/" + seasons[track] + ".mp3";
+                // Each time it's switched on, the next season starts (Spring first) (msg 609).
+                track = (track + 1) % seasons.length;
+                music.src = "/music/" + seasons[track] + ".mp3";
                 music.play().catch(function () { playing = false; quartet.classList.remove("on"); });
             } else {
                 music.pause();
@@ -425,6 +427,56 @@
                 .catch(function () { location.href = "/dragon-gallery/image/" + n; })
                 .finally(function () { busy = false; });
         }
+
+        // Post a comment without reloading the page, so the music and the wine glass carry on
+        // (operator, msg 609). Without this script the form still posts the normal way.
+        function notice(text, bad) {
+            var div = document.createElement("div");
+            div.className = bad ? "message bad" : "message"; div.textContent = text;
+            return div;
+        }
+        function banBox(b, posted) {
+            var div = document.createElement("div"), lines = [];
+            div.className = "message bad timeout";
+            var head = b.ended ? (posted ? "Your comment is up. But heads up: you were in a timeout until "
+                                          : "You were in a timeout until ")
+                               : "You're in a timeout until ";
+            div.append(head, timeEl(b.until, "datetime", b.until_text), b.ended ? "." : ", so you can't comment yet.");
+            if (b.reason) { div.append(document.createElement("br"), "Reason: " + b.reason); }
+            if (b.subject_kind === "comment") {
+                var q = document.createElement("q"); q.textContent = b.subject_text;
+                div.append(document.createElement("br"), "It was for your comment: ", q);
+            } else if (b.subject_kind === "drawing" && b.subject_at) {
+                div.append(document.createElement("br"), "It was for your drawing sent ",
+                           timeEl(b.subject_at, "datetime", b.subject_at_text), ".");
+            }
+            return div;
+        }
+        var form = document.getElementById("comment-form");
+        form.addEventListener("submit", function (e) {
+            e.preventDefault();
+            var button = form.querySelector("button"), shown = current;
+            button.disabled = true;
+            fetch(form.action, { method: "POST", body: new URLSearchParams(new FormData(form)),
+                                 headers: { "X-Requested-With": "fetch" } })
+                .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+                .then(function (res) {
+                    var after = res.c === "posted"
+                        ? fetch("/dragon-gallery/api/image/" + shown).then(function (r) { return r.json(); })
+                              .then(function (d) { if (shown === current) render(d); })
+                        : Promise.resolve();
+                    return after.then(function () {
+                        if (res.c === "posted") form.querySelector("textarea").value = "";
+                        var box = document.getElementById("notices");
+                        box.replaceChildren();
+                        if (res.ban) box.appendChild(banBox(res.ban, res.c === "posted"));
+                        else if (res.notice) box.appendChild(notice(res.notice, res.bad));
+                        box.scrollIntoView({ block: "nearest" });
+                    });
+                })
+                .catch(function () { form.submit(); })         // fall back to the plain post
+                .finally(function () { button.disabled = false; });
+        });
 
         history.replaceState({ n: current }, "", location.href);
         document.addEventListener("click", function (e) {

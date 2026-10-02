@@ -487,7 +487,9 @@ def test_a_ban_that_ended_unseen_is_told_once_then_erased(make):
     page = client.get(r.headers["location"], headers={"CF-Connecting-IP": IP}).text
     assert "you were in a timeout until" in page and "Reason: be nice" in page
     assert client.bans.rows == {}                                       # acknowledged: erased
-    assert "were in a timeout" not in client.get(r.headers["location"], headers={"CF-Connecting-IP": IP}).text
+    again = client.get(r.headers["location"], headers={"CF-Connecting-IP": IP}).text
+    notices = again[again.index('<div id="notices">'):again.index('<div id="comment-list">')]
+    assert "timeout" not in notices
 
 
 def test_a_drawing_after_an_unseen_ban_carries_the_notice_once(make):
@@ -776,3 +778,35 @@ def test_corner_images_show_at_clean_scales(make):
         w = Image.open(f"app/static/Assets/{name}.png").width
         desk, narrow = [int(x) for x in re.findall(rf"\.corner\.{side} img {{ width: (\d+)px; }}", page)]
         assert desk in (w, 2 * w) and narrow * 2 == desk, (name, w, desk, narrow)
+
+
+
+# --- posting a comment without a reload (operator msg 609) -------------------
+FETCH = {"CF-Connecting-IP": IP, "X-Requested-With": "fetch"}
+
+
+def test_the_page_script_gets_json_not_a_redirect(make):
+    client, *_ = make()
+    draw(client)
+    r = client.post("/dragon-gallery/image/1/comments", data={"body": "hi"}, headers=FETCH, follow_redirects=False)
+    assert r.status_code == 200 and r.json() == {"c": "posted", "notice": "Thanks! Your comment is up.", "bad": False}
+    assert [c["body"] for c in client.comments.rows.values()] == ["hi"]
+    r = client.post("/dragon-gallery/image/1/comments", data={"body": "  "}, headers=FETCH)
+    assert r.json()["c"] == "empty" and r.json()["bad"] is True
+    plain = client.post("/dragon-gallery/image/1/comments", data={"body": "plain"},
+                        headers={"CF-Connecting-IP": IP}, follow_redirects=False)
+    assert plain.status_code == 303                                  # no script: the old way
+
+
+def test_the_json_tells_the_banned_visitor_and_follows_the_told_rules(make):
+    client, *_ = make(admin_verifier=AllowAll())
+    draw(client)
+    comment(client, 1, "you all stink")
+    admin_ban_row(client, "comment", 1)
+    r = client.post("/dragon-gallery/image/1/comments", data={"body": "again"}, headers=FETCH).json()
+    assert r["c"] == "banned" and r["ban"]["reason"] == "be nice" and r["ban"]["subject_text"] == "you all stink"
+    assert r["ban"]["ended"] is False and client.bans.rows[1]["told"] is not None
+    expire(client, 1)
+    client.bans.rows[1]["told"] = None                                # ran out before they came back
+    r = client.post("/dragon-gallery/image/1/comments", data={"body": "sorry"}, headers=FETCH).json()
+    assert r["c"] == "posted" and r["ban"]["ended"] is True and client.bans.rows == {}
