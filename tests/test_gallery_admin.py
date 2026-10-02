@@ -888,3 +888,14 @@ def test_hovering_the_date_shows_the_time(make):
     when = drawings.rows[1][2].astimezone(timezone.utc)
     assert f'title="{when:%Y-%m-%d %H:%M:%S} UTC"' in plaque
     assert 'dateStyle: "full", timeStyle: "medium"' in page
+
+
+
+# --- refresh without a reload (operator msg 639) ------------------------------
+def test_the_refresh_link_is_on_drawing_pages(make):
+    client, *_ = make()
+    draw(client, 2)
+    page = client.get("/dragon-gallery/image/2").text
+    assert '<a id="refresh" class="refresh" href="/dragon-gallery/image/2"' in page
+    assert "function refresh()" in page
+    assert 'id="refresh"' not in client.get("/dragon-gallery/image/9").text      # nothing to refresh

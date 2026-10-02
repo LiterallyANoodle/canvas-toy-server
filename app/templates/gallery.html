@@ -211,6 +211,8 @@
         .jump { background-color: black; padding: 8px; color: gold; margin: 5px; }
         .jump input { width: 5em; background: #111; color: lightgray; border: 1px solid gold; font: inherit; }
         .jump button { background: black; color: gold; border: 1px solid gold; padding: 2px 10px; cursor: pointer; }
+        .jump .refresh { margin-left: 8px; color: gold; border: 1px solid gold; padding: 1px 8px; text-decoration: none; }
+        .jump .refresh.busy { opacity: 0.5; }
 
         .comments { text-align: left; }
         .comments h2 { font-family: "UnifrakturMaguntia", cursive; font-weight: 400; color: gold; margin: 4px 0 8px; }
@@ -246,6 +248,7 @@
             <form class="jump" id="jump" method="get" action="/dragon-gallery/go">
                 <label>Go to No. <input id="jump-n" name="n" type="number" min="1" max="{{ total }}" inputmode="numeric" required{% if drawing %} placeholder="{{ drawing.number }}"{% endif %}></label>
                 of <span id="total">{{ total }}</span> <button type="submit">Go</button>
+                {% if drawing %}<a id="refresh" class="refresh" href="/dragon-gallery/image/{{ drawing.number }}" title="Check for new comments and drawings">&#8635; refresh</a>{% endif %}
             </form>
             {% endif %}
             {%- endmacro %}
@@ -443,6 +446,8 @@
                 list.appendChild(div);
             });
             document.getElementById("comment-form").action = "/dragon-gallery/image/" + d.number + "/comments";
+            var rl = document.getElementById("refresh");
+            if (rl) rl.href = "/dragon-gallery/image/" + d.number;
             var jump = document.getElementById("jump-n");
             if (jump) { jump.placeholder = d.number; jump.max = d.total; jump.value = ""; }
             var total = document.getElementById("total");
@@ -462,6 +467,38 @@
                 .catch(function () { location.href = "/dragon-gallery/image/" + n; })
                 .finally(function () { busy = false; });
         }
+
+        // Refresh: re-read this drawing's comments and the drawing list (count, first/prev/next/
+        // last) in place, so the music and the wine glass carry on (operator, msg 639). A comment
+        // being typed is kept. Without this script the link is a plain reload.
+        var refreshLink = document.getElementById("refresh");
+        function refresh() {
+            if (busy) return;
+            busy = true;
+            refreshLink.classList.add("busy");
+            var before = document.getElementById("drawing").getAttribute("src");
+            fetch("/dragon-gallery/api/image/" + current)
+                .then(function (r) {
+                    if (r.status === 404) { location.href = "/dragon-gallery"; throw new Error("gone"); }
+                    if (!r.ok) throw new Error(r.status);
+                    return r.json();
+                })
+                .then(function (d) {                           // a deletion can shift what's at this number
+                    return d.image && d.image !== before ? preload(d.image).then(function () { return d; }) : d;
+                })
+                .then(function (d) {
+                    render(d);
+                    refreshLink.href = "/dragon-gallery/image/" + d.number;
+                    if (window.dragonPlaceCorners) window.dragonPlaceCorners();
+                })
+                .catch(function () {})
+                .finally(function () { busy = false; refreshLink.classList.remove("busy"); });
+        }
+        if (refreshLink) refreshLink.addEventListener("click", function (e) {
+            if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+            e.preventDefault();
+            refresh();
+        });
 
         // Post a comment without reloading the page, so the music and the wine glass carry on
         // (operator, msg 609). Without this script the form still posts the normal way.
