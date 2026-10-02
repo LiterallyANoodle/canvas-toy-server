@@ -810,3 +810,22 @@ def test_the_json_tells_the_banned_visitor_and_follows_the_told_rules(make):
     client.bans.rows[1]["told"] = None                                # ran out before they came back
     r = client.post("/dragon-gallery/image/1/comments", data={"body": "sorry"}, headers=FETCH).json()
     assert r["c"] == "posted" and r["ban"]["ended"] is True and client.bans.rows == {}
+
+
+# --- cache-busting asset URLs (operator msg 616) -----------------------------
+def test_every_asset_url_on_the_gallery_is_versioned_and_served(make):
+    import hashlib
+    import re
+    from pathlib import Path
+    client, *_ = make()
+    draw(client)
+    page = client.get("/dragon-gallery/image/1").text
+    refs = set(re.findall(r'/(?:Assets|sounds|music)/[A-Za-z0-9_.-]+\.(?:png|gif|jpg|mp3)(?:\?v=[0-9a-f]+)?', page))
+    assert refs, "no asset references found"
+    for ref in refs:
+        path, _, v = ref.partition("?v=")
+        assert v, f"unversioned: {ref}"
+        assert v == hashlib.sha256(Path("app/static", path.lstrip("/")).read_bytes()).hexdigest()[:10], ref
+        assert client.get(ref).status_code == 200, ref
+    for season in ("spring", "summer", "autumn", "winter"):
+        assert any(r.startswith(f"/music/{season}.mp3?v=") for r in refs), season

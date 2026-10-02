@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import logging
 import re
@@ -37,6 +38,21 @@ log = logging.getLogger("dragonmail")
 HERE = Path(__file__).parent
 STATIC = HERE / "static"
 templates = Jinja2Templates(directory=HERE / "templates")
+
+_asset_versions: dict[str, str] = {}
+
+
+def asset(path: str) -> str:
+    """`/Assets/x.png` -> `/Assets/x.png?v=<hash of its contents>`. Cloudflare caches static files
+    at its edge for hours; a changed file gets a new URL, so nobody is served a stale copy
+    (operator, msg 616: the old quartet and grunt were still being served)."""
+    if path not in _asset_versions:
+        file = STATIC / path.lstrip("/")
+        _asset_versions[path] = hashlib.sha256(file.read_bytes()).hexdigest()[:10]
+    return f"{path}?v={_asset_versions[path]}"
+
+
+templates.env.globals["asset"] = asset
 
 # Fixed texts for the ?c= / ?n= query keys, so nothing a visitor types is echoed back.
 COMMENT_NOTICES = {

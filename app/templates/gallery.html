@@ -15,7 +15,7 @@
         body {
 			color: lightgray;
 			max-width: 100%;
-			background: url(/Assets/white_marble.jpg);
+			background: url({{ asset('/Assets/white_marble.jpg') }});
 			image-rendering: crisp-edges;
 		}
 
@@ -40,14 +40,14 @@
             margin: 64px auto;
             padding: 10px 26px;
             border: 24px solid transparent;
-            border-image: url(/Assets/carpet_border.png) 12 round;
-            background: url(/Assets/carpet_tile.png) repeat padding-box;
+            border-image: url({{ asset('/Assets/carpet_border.png') }}) 12 round;
+            background: url({{ asset('/Assets/carpet_tile.png') }}) repeat padding-box;
             background-size: 48px 48px;
             image-rendering: pixelated;
         }
         .tassel {
             position: absolute; width: 20px; height: 44px;
-            background: url(/Assets/tassel.png) no-repeat; background-size: 20px 44px;
+            background: url({{ asset('/Assets/tassel.png') }}) no-repeat; background-size: 20px 44px;
             image-rendering: pixelated; pointer-events: none;
         }
         .tassel.tl, .tassel.tr { top: -66px; transform: scaleY(-1); }
@@ -88,7 +88,7 @@
             .corner.left img { width: 65px; }
             .corner.right img { width: 104px; }
         }
-        body.wine, body.wine * { cursor: url(/Assets/wine_cursor.png) 16 4, auto !important; }
+        body.wine, body.wine * { cursor: url({{ asset('/Assets/wine_cursor.png') }}) 16 4, auto !important; }
 
         .container div {
             margin: 5px;
@@ -177,7 +177,7 @@
             display: block;
             height: 90px;
             line-height: 90px;
-            background: url(/Assets/wooden_sign_dark.png) no-repeat;
+            background: url({{ asset('/Assets/wooden_sign_dark.png') }}) no-repeat;
             background-size: 100% 100%;         /* stretched to the column: the cruder the better */
             image-rendering: pixelated;
             font-family: "Times New Roman", Times, serif;
@@ -219,16 +219,16 @@
 </head>
 <body>
     <div class="corner-row">
-        <button id="quartet" class="corner left" type="button" title="Music, maestro" aria-pressed="false"><img src="/Assets/quartet.png" alt="A string quartet: play the Four Seasons"></button>
-        <button id="spike" class="corner right" type="button" title="A glass of wine?" aria-pressed="false"><img src="/Assets/spike_table.png" alt="Spike in a tuxedo by a table of red wine glasses"></button>
+        <button id="quartet" class="corner left" type="button" title="Music, maestro" aria-pressed="false"><img src="{{ asset('/Assets/quartet.png') }}" alt="A string quartet: play the Four Seasons"></button>
+        <button id="spike" class="corner right" type="button" title="A glass of wine?" aria-pressed="false"><img src="{{ asset('/Assets/spike_table.png') }}" alt="Spike in a tuxedo by a table of red wine glasses"></button>
     </div>
     <div class="container">
         <span class="tassel tl"></span><span class="tassel tr"></span><span class="tassel bl"></span><span class="tassel br"></span>
         <div class="content">
             <div class="title">
-                <img src="/Assets/sword3.gif" style="transform: scaleX(-1);" alt="">
+                <img src="{{ asset('/Assets/sword3.gif') }}" style="transform: scaleX(-1);" alt="">
                 <h1><a href="/dragon-gallery">Dragon Gallery</a></h1>
-                <img src="/Assets/sword3.gif" alt="">
+                <img src="{{ asset('/Assets/sword3.gif') }}" alt="">
             </div>
             {% macro jump_box() -%}
             {% if total %}
@@ -246,7 +246,7 @@
             <div>
                 <span class="framed">
                     <span id="opening" class="opening{% if standard and not drawing.hidden %} standard{% endif %}"><img id="drawing" class="drawing" style="width: {{ scale_pct }}%"{% if drawing.hidden %} hidden{% else %} src="/images/{{ drawing.id }}.png"{% endif %} alt="Drawing #{{ drawing.number }}"><span id="hidden-note" class="hidden-note"{% if not drawing.hidden %} hidden{% endif %}>This lot has been hidden</span></span>
-                    <img class="frame" src="/Assets/Square-Gold-Frame-PNG-908289183.png" alt="">
+                    <img class="frame" src="{{ asset('/Assets/Square-Gold-Frame-PNG-908289183.png') }}" alt="">
                 </span>
             </div>
             <div class="plaque" id="plaque">{{ when(drawing.created_at, "date") }}</div>
@@ -307,11 +307,13 @@
        of wine, and every click is then a ponderous DOOM "hmmmm" (operator, msg 573). */
     (function () {
         var seasons = ["spring", "summer", "autumn", "winter"], track = -1;
+        var tracks = { spring: "{{ asset('/music/spring.mp3') }}", summer: "{{ asset('/music/summer.mp3') }}",
+                       autumn: "{{ asset('/music/autumn.mp3') }}", winter: "{{ asset('/music/winter.mp3') }}" };
         var music = new Audio(), quartet = document.getElementById("quartet");
         music.preload = "none";
         music.addEventListener("ended", function () {
             track = (track + 1) % seasons.length;
-            music.src = "/music/" + seasons[track] + ".mp3";
+            music.src = tracks[seasons[track]];
             music.play();
         });
         var playing = false;
@@ -320,7 +322,7 @@
             if (playing) {
                 // Each time it's switched on, the next season starts (Spring first) (msg 609).
                 track = (track + 1) % seasons.length;
-                music.src = "/music/" + seasons[track] + ".mp3";
+                music.src = tracks[seasons[track]];
                 music.play().catch(function () { playing = false; quartet.classList.remove("on"); });
             } else {
                 music.pause();
@@ -329,7 +331,7 @@
             quartet.setAttribute("aria-pressed", playing);
         });
 
-        var spike = document.getElementById("spike"), hmmm = "/sounds/hmmm.mp3", warmed = false;
+        var spike = document.getElementById("spike"), hmmm = "{{ asset('/sounds/hmmm.mp3') }}", warmed = false;
         spike.addEventListener("click", function (e) {
             e.stopPropagation();                               // taking or putting down the glass isn't a sip
             var on = document.body.classList.toggle("wine");
