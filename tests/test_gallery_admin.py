@@ -911,3 +911,30 @@ def test_the_gallery_invites_drawing_and_the_canvas_points_to_the_gallery(make):
     draw = client.get("/draw").text
     assert '<a class="gallery-link" href="/dragon-gallery">' in draw
     assert draw.index('class="gallery-link"') < draw.index("<canvas")             # above the canvas
+
+
+
+# --- after sending, go to the new lot (operator msg 645) ----------------------
+def test_a_sent_drawing_tells_the_page_where_it_landed(make):
+    client, drawings, *_ = make()
+    r = submit(client, data_url(canvas_like()))
+    assert r.status_code == 200 and r.headers["x-drawing-url"] == f"/dragon-gallery/d/{drawings.rows[1][0]}"
+    assert "x-show-message" not in r.headers
+    follow = client.get(r.headers["x-drawing-url"], follow_redirects=False)
+    assert follow.headers["location"] == "/dragon-gallery/image/1"
+    bad = submit(client, b"data:image/png;base64,nope")
+    assert bad.status_code == 400 and "x-drawing-url" not in bad.headers
+
+
+def test_an_ended_ban_notice_is_still_shown_before_moving_on(make):
+    client, *_ = make(admin_verifier=AllowAll())
+    admin_post(client, "/admin/bans", {"network": IP, "scope": "all", "duration": "1h", "reason": "spam"})
+    expire(client, 1)
+    r = submit(client, data_url(canvas_like()))
+    assert r.headers.get("x-show-message") == "1" and "Heads up" in r.text and "x-drawing-url" in r.headers
+
+
+def test_the_draw_page_follows_the_header():
+    from pathlib import Path
+    page = Path("app/static/draw.html").read_text()
+    assert 'response.headers.get("X-Drawing-Url")' in page and "window.location.href = where" in page

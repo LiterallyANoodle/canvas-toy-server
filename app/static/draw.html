@@ -385,6 +385,13 @@
                 const time = Date.now();
                 response.text().then((text) => {
                     console.log(`${new Date(time).toISOString()} Server Response: ${response.status} --- ${text}`);
+                    // Sent: go and see it in the gallery, under its lot number (operator, msg 645).
+                    const where = response.ok && response.headers.get("X-Drawing-Url");
+                    if (where) {
+                        if (response.headers.get("X-Show-Message")) window.alert(`Message from server:\n${text}`);
+                        window.location.href = where;
+                        return;
+                    }
                     window.alert(`Message from server:\n${text}`)
                 });
             });

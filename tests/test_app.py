@@ -242,7 +242,7 @@ def test_the_drawing_page_is_served_with_its_look(make):
     r = client.get("/draw")
     assert r.status_code == 200 and "<canvas" in r.text and 'fetch("/submit"' in r.text
     assert client.get("/Assets/fonts/Ciircuit-Regular.ttf").status_code == 200
-    assert client.get("/", follow_redirects=False).headers["location"] == "/dragon-gallery"
+    assert client.get("/", follow_redirects=False).headers["location"] == "/draw"
     assert 'href="/dragon-gallery"' in r.text
 
 

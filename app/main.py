@@ -186,7 +186,7 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
 
     @app.get("/", include_in_schema=False)
     async def root():
-        return RedirectResponse("/dragon-gallery")
+        return RedirectResponse("/draw")                # the drawing toy is the front page again (msg 645)
 
     @app.get("/draw", include_in_schema=False)
     async def draw():
@@ -248,11 +248,13 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
         reply = f"Got it, thank you! Your drawing is #{number}.\n"
         if link:
             reply += f"See it in the gallery: {link}\n"
+        headers = {"X-Drawing-Url": f"/dragon-gallery/d/{drawing_id}"}   # the page goes straight there (msg 645)
         ended = await bans.ended_untold_for(ip, "draw")
         if ended is not None:                        # told once, then erased (operator, msgs 537/539)
             reply += "\nHeads up: " + ban_notice(ended, now)
+            headers["X-Show-Message"] = "1"          # the page shows this before moving on
             await bans.forget(ended.id)
-        return PlainTextResponse(reply)
+        return PlainTextResponse(reply, headers=headers)
 
     async def gallery_page(request: Request, status_code=200, **context) -> HTMLResponse:
         context.setdefault("drawing", None)
