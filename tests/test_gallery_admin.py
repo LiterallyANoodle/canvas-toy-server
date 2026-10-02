@@ -860,3 +860,17 @@ def test_the_frame_fits_inside_the_column_at_1to1(make):
     blocks = content - 2 * 5 - 2 * 5                      # .content margin + each block's margin
     frame = 900 * 500 / 701
     assert content == 700 and blocks > frame, (content, blocks, frame)
+
+
+def test_the_carpet_is_pre_scaled_nearest_neighbour():
+    # msg 629: blurry on phones. The files carry the 8x nearest-neighbour scaling themselves:
+    # every 8x8 block is one flat colour.
+    from PIL import Image
+    for name in ("carpet_tile", "carpet_border", "tassel"):
+        im = Image.open(f"app/static/Assets/{name}.png").convert("RGBA")
+        assert im.width % 8 == 0 and im.height % 8 == 0, name
+        px = im.load()
+        for by in range(0, im.height, 8):
+            for bx in range(0, im.width, 8):
+                c = px[bx, by]
+                assert all(px[bx + dx, by + dy] == c for dx in range(8) for dy in range(8)), (name, bx, by)

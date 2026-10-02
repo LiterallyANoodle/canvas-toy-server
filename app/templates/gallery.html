@@ -41,15 +41,19 @@
             margin: 64px auto;
             padding: 10px 26px;
             border: 24px solid transparent;
-            border-image: url({{ asset('/Assets/carpet_border.png') }}) 12 round;
+            /* The carpet images are stored already scaled 8x nearest-neighbour, so browsers that
+               ignore image-rendering (some phones, some border-image paths) still show crisp
+               pixels instead of a blur (operator, msg 629). Slice 96 = the 12px corner x 8. */
+            border-image: url({{ asset('/Assets/carpet_border.png') }}) 96 round;
             background: url({{ asset('/Assets/carpet_tile.png') }}) repeat padding-box;
             background-size: 48px 48px;
+            image-rendering: crisp-edges;
             image-rendering: pixelated;
         }
         .tassel {
             position: absolute; width: 20px; height: 44px;
             background: url({{ asset('/Assets/tassel.png') }}) no-repeat; background-size: 20px 44px;
-            image-rendering: pixelated; pointer-events: none;
+            image-rendering: crisp-edges; image-rendering: pixelated; pointer-events: none;
         }
         .tassel.tl, .tassel.tr { top: -66px; transform: scaleY(-1); }
         .tassel.bl, .tassel.br { bottom: -66px; }

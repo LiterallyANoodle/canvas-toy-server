@@ -11,7 +11,7 @@
   and saved through a quality-35 JPEG to match the Spike picture. Sourced by the operator;
   used at his choice.
 - `carpet_tile.png`, `carpet_border.png`, `tassel.png`, `wine_cursor.png`: drawn pixel by pixel for this
-  project (T-0049).
+  project (T-0049). The carpet, border and tassel are stored scaled 8x nearest-neighbour.
 - `spike_table.png`: the operator's own photoshop (2026-10-02) of Spike by a table of red wine
   glasses; background cut out, shrunk and saved through a quality-35 JPEG on purpose. Spike is
   a My Little Pony character (Hasbro); the table and glasses were sourced by the operator.
