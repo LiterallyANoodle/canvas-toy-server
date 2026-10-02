@@ -761,7 +761,7 @@ def test_the_freedoom_notice_ships_with_the_sound():
     notice = Path("app/static/sounds/FREEDOOM-COPYING.txt").read_text()
     assert "Contributors to the Freedoom project" in notice and "Redistribution and use" in notice
     credits = Path("app/static/Assets/SOURCE.md").read_text()
-    for name in ("quartet.png", "papapishu", "CC0", "Freedoom", "Modena", "spike_table.png"):
+    for name in ("quartet.png", "Freedoom", "Modena", "spike_table.png", "carpet_tile.png"):
         assert name in credits, name
 
 

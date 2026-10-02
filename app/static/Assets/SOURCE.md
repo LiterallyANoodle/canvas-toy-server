@@ -6,9 +6,9 @@
   https://opengameart.org/content/game-wood-panel. Cropped to the lower board, its ragged
   bottom edge mirrored onto the top, shrunk to 240x80, darkened (so gold text reads on it) and
   cut to 20 colours (T-0049).
-- `quartet.png`: two violins, a viola and a cello, composed and crunched from "Violin" and
-  "Cello 1" by papapishu (Open Clip Art Library), CC0 1.0, via Wikimedia Commons
-  (File:Violin.svg, File:Cello_1.svg) (T-0049).
+- `quartet.png`: a photo of a string quartet's instruments supplied by the operator
+  (2026-10-02); black background cut out, shrunk and saved through a quality-35 JPEG to match
+  the Spike picture. Sourced by the operator; used at his choice.
 - `carpet_tile.png`, `gold_trim.png`, `wine_cursor.png`: drawn pixel by pixel for this
   project (T-0049).
 - `spike_table.png`: the operator's own photoshop (2026-10-02) of Spike by a table of red wine
