@@ -942,3 +942,12 @@ def test_the_draw_page_follows_the_header():
     from pathlib import Path
     page = Path("app/static/draw.html").read_text()
     assert 'response.headers.get("X-Drawing-Url")' in page and "window.location.href = where" in page
+
+
+
+def test_the_send_a_drawing_button_does_not_pulse(make):
+    # msg 649: no glow animation on the gallery's link to the painter.
+    client, *_ = make()
+    page = client.get("/dragon-gallery").text
+    cta_css = page[page.index(".cta a {"):page.index("}", page.index(".cta a {"))]
+    assert "animation" not in cta_css and "cta-glow" not in page
