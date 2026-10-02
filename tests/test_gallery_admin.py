@@ -765,11 +765,13 @@ def test_the_freedoom_notice_ships_with_the_sound():
         assert name in credits, name
 
 
-def test_corner_images_show_at_whole_multiples(make):
+def test_corner_images_show_at_clean_scales(make):
+    # Desktop shows each corner at 1x or 2x of its image; narrow screens at half that.
+    import re
     from PIL import Image
     client, *_ = make()
     page = client.get("/dragon-gallery").text
     for side, name in (("left", "quartet"), ("right", "spike_table")):
         w = Image.open(f"app/static/Assets/{name}.png").width
-        assert f".corner.{side} img {{ width: {2 * w}px; }}" in page, name
-        assert f".corner.{side} img {{ width: {w}px; }}" in page, name
+        desk, narrow = [int(x) for x in re.findall(rf"\.corner\.{side} img {{ width: (\d+)px; }}", page)]
+        assert desk in (w, 2 * w) and narrow * 2 == desk, (name, w, desk, narrow)

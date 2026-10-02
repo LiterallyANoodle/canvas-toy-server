@@ -9,17 +9,18 @@
 - `quartet.png`: two violins, a viola and a cello, composed and crunched from "Violin" and
   "Cello 1" by papapishu (Open Clip Art Library), CC0 1.0, via Wikimedia Commons
   (File:Violin.svg, File:Cello_1.svg) (T-0049).
-- `carpet_tile.png`, `gold_trim.png`, `wine_cursor.png`, and the wine table in
-  `spike_table.png`: drawn pixel by pixel for this project (T-0049).
-- Spike in `spike_table.png`: picture supplied by the operator (2026-10-02), background
-  removed and crunched. Spike is a My Little Pony character (Hasbro); used here as a joke on
-  the operator's own site, at his choice.
+- `carpet_tile.png`, `gold_trim.png`, `wine_cursor.png`: drawn pixel by pixel for this
+  project (T-0049).
+- `spike_table.png`: the operator's own photoshop (2026-10-02) of Spike by a table of red wine
+  glasses; background cut out, shrunk and saved through a low-quality JPEG on purpose. Spike is
+  a My Little Pony character (Hasbro); the table and glasses were sourced by the operator.
+  Used as a joke on the operator's own site, at his choice.
 
 Sounds and music (`../sounds/`, `../music/`):
 
 - `sounds/hmmm.mp3`: Freedoom's `dsplpain.wav` (the free counterpart of DOOM's player pain
-  grunt): its first 0.6 s, pitched down two semitones, time-stretched (ffmpeg atempo
-  0.5 x 0.5 x 0.6) so the grunt itself lasts about 2.5 s, then faded out. Freedoom is BSD-licensed; its notice is in `sounds/FREEDOOM-COPYING.txt`,
+  grunt): its first 0.6 s, pitched down seven semitones, time-stretched (ffmpeg atempo
+  0.5 x 0.5 x 0.82) so the grunt itself lasts about 2.5 s, then faded out. Freedoom is BSD-licensed; its notice is in `sounds/FREEDOOM-COPYING.txt`,
   as the licence requires.
 - `music/spring.mp3` ... `winter.mp3`: Vivaldi, The Four Seasons, Op. 8 Nos. 1-4, The Modena
   Chamber Orchestra, from Musopen (musopen.org), public domain (Public Domain Mark). Tags
