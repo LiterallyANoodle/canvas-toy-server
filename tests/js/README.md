@@ -13,7 +13,8 @@ the rest of the suite in CI and gate merges the same way (T-0062).
 - `refresh.js`: the refresh link updates comments and the list in place (T-0063).
 - `send.js`: the drawing page goes to the new lot after a successful send (T-0064). Loads
   `app/static/draw.html` directly, no fixtures.
-- `undo.js`: the drawing page's ctrl+z / ctrl+y (and ctrl+shift+z, cmd on a Mac) call undo/redo (T-0069).
+- `undo.js`: the drawing page's ctrl+z / ctrl+y (and ctrl+shift+z, cmd on a Mac) call undo/redo (T-0069),
+  and undo after Clear brings the drawing back (T-0071).
   Also loads `app/static/draw.html` directly.
 
 Locally: `npm ci` here once, then `python -m pytest tests/test_browser.py`. Without Node or
