@@ -829,3 +829,15 @@ def test_every_asset_url_on_the_gallery_is_versioned_and_served(make):
         assert client.get(ref).status_code == 200, ref
     for season in ("spring", "summer", "autumn", "winter", "minuet"):
         assert any(r.startswith(f"/music/{season}.mp3?v=") for r in refs), season
+
+
+def test_phone_corners_are_pinned_and_tuck_away_from_the_drawing(make):
+    # msg 625: on narrow screens the corners stay pinned bottom-left/right, but hide while the
+    # drawing is in their strip. (Behaviour checked in jsdom; here, the pieces are present.)
+    client, *_ = make()
+    draw(client)
+    page = client.get("/dragon-gallery/image/1").text
+    narrow = page[page.index("@media (max-width: 1120px)"):]
+    narrow = narrow[:narrow.index("body.wine")]
+    assert "position: static" not in narrow and ".corner.tucked { opacity: 0; visibility: hidden; pointer-events: none; }" in narrow
+    assert "function placeCorners()" in page and "dragonPlaceCorners" in page

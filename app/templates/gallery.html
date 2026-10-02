@@ -81,12 +81,18 @@
             50% { filter: drop-shadow(0 0 22px rgba(255, 240, 160, 1)); }
         }
         /* No room beside the column (phones, small windows): the corners sit above the banner. */
-        .corner-row { display: contents; }               /* wide screens: the corners are fixed, the row is invisible */
+        .corner-row { display: contents; }               /* the corners are fixed; the row itself is invisible */
+        /* Narrow screens (phones): the corners stay pinned to the bottom corners, smaller, but
+           only appear once the drawing has scrolled clear of them, so they never cover it
+           (operator, msg 625). The page script adds .tucked while the drawing is in the way. */
         @media (max-width: 1120px) {
-            .corner-row { display: flex; justify-content: space-between; align-items: flex-end; max-width: 700px; margin: 0 auto 4px; }
-            .corner { position: static; }
+            .corner { bottom: 6px; transition: opacity 0.25s, visibility 0.25s; }
+            .corner.left { left: 6px; }
+            .corner.right { right: 6px; }
             .corner.left img { width: 64px; }
             .corner.right img { width: 104px; }
+            .corner.tucked { opacity: 0; visibility: hidden; pointer-events: none; }
+            body { padding-bottom: 120px; }                  /* room so the pinned corners never hide the comment box */
         }
         body.wine, body.wine * { cursor: url({{ asset('/Assets/wine_cursor.png') }}) 16 4, auto !important; }
 
@@ -332,6 +338,23 @@
             quartet.setAttribute("aria-pressed", playing);
         });
 
+        // On narrow screens, keep the corners out of the way until the drawing has scrolled
+        // above the strip they occupy (msg 625). Wide screens never tuck them.
+        var narrow = window.matchMedia ? window.matchMedia("(max-width: 1120px)") : { matches: false };
+        function placeCorners() {
+            var frame = document.querySelector(".framed");
+            var zone = Math.max(quartet.offsetHeight, document.getElementById("spike").offsetHeight) + 12;
+            var inTheWay = narrow.matches && frame && frame.getBoundingClientRect().bottom > window.innerHeight - zone;
+            quartet.classList.toggle("tucked", !!inTheWay);
+            document.getElementById("spike").classList.toggle("tucked", !!inTheWay);
+        }
+        window.addEventListener("scroll", placeCorners, { passive: true });
+        window.addEventListener("resize", placeCorners);
+        if (narrow.addEventListener) narrow.addEventListener("change", placeCorners);
+        window.addEventListener("load", placeCorners);
+        placeCorners();
+        window.dragonPlaceCorners = placeCorners;           // the flip script calls this after a swap
+
         var spike = document.getElementById("spike"), hmmm = "{{ asset('/sounds/hmmm.mp3') }}", warmed = false;
         spike.addEventListener("click", function (e) {
             e.stopPropagation();                               // taking or putting down the glass isn't a sip
@@ -426,6 +449,7 @@
                 .then(function (d) {
                     render(d);
                     if (push) history.pushState({ n: d.number }, "", "/dragon-gallery/image/" + d.number);
+                    if (window.dragonPlaceCorners) window.dragonPlaceCorners();
                 })
                 .catch(function () { location.href = "/dragon-gallery/image/" + n; })
                 .finally(function () { busy = false; });
