@@ -888,3 +888,66 @@ def test_hovering_the_date_shows_the_time(make):
     when = drawings.rows[1][2].astimezone(timezone.utc)
     assert f'title="{when:%Y-%m-%d %H:%M:%S} UTC"' in plaque
     assert 'dateStyle: "full", timeStyle: "medium"' in page
+
+
+
+# --- refresh without a reload (operator msg 639) ------------------------------
+def test_the_refresh_link_is_on_drawing_pages(make):
+    client, *_ = make()
+    draw(client, 2)
+    page = client.get("/dragon-gallery/image/2").text
+    assert '<a id="refresh" class="refresh" href="/dragon-gallery/image/2"' in page
+    assert "function refresh()" in page
+    assert 'id="refresh"' not in client.get("/dragon-gallery/image/9").text      # nothing to refresh
+
+
+
+# --- both ways obvious (operator msgs 643/644) ------------------------------
+def test_the_gallery_invites_drawing_and_the_canvas_points_to_the_gallery(make):
+    client, *_ = make()
+    draw(client, 2)
+    for page in (client.get("/dragon-gallery/image/1").text, client.get("/dragon-gallery/image/5").text):
+        assert page.count('<div class="cta"><a href="/draw">') == 1
+        # between the selector bar (nav + jump box) and the comments (msg 647)
+        assert page.index('id="jump"') < page.index('<div class="cta">')
+        if 'id="comments"' in page:
+            assert page.index('<div class="cta">') < page.index('id="comments"')
+    canvas_page = client.get("/draw").text
+    assert '<a class="gallery-link" href="/dragon-gallery">' in canvas_page
+    assert canvas_page.index('class="gallery-link"') < canvas_page.index("<canvas")   # above the canvas
+
+
+
+# --- after sending, go to the new lot (operator msg 645) ----------------------
+def test_a_sent_drawing_tells_the_page_where_it_landed(make):
+    client, drawings, *_ = make()
+    r = submit(client, data_url(canvas_like()))
+    assert r.status_code == 200 and r.headers["x-drawing-url"] == f"/dragon-gallery/d/{drawings.rows[1][0]}"
+    assert "x-show-message" not in r.headers
+    follow = client.get(r.headers["x-drawing-url"], follow_redirects=False)
+    assert follow.headers["location"] == "/dragon-gallery/image/1"
+    bad = submit(client, b"data:image/png;base64,nope")
+    assert bad.status_code == 400 and "x-drawing-url" not in bad.headers
+
+
+def test_an_ended_ban_notice_is_still_shown_before_moving_on(make):
+    client, *_ = make(admin_verifier=AllowAll())
+    admin_post(client, "/admin/bans", {"network": IP, "scope": "all", "duration": "1h", "reason": "spam"})
+    expire(client, 1)
+    r = submit(client, data_url(canvas_like()))
+    assert r.headers.get("x-show-message") == "1" and "Heads up" in r.text and "x-drawing-url" in r.headers
+
+
+def test_the_draw_page_follows_the_header():
+    from pathlib import Path
+    page = Path("app/static/draw.html").read_text()
+    assert 'response.headers.get("X-Drawing-Url")' in page and "window.location.href = where" in page
+
+
+
+def test_the_send_a_drawing_button_does_not_pulse(make):
+    # msg 649: no glow animation on the gallery's link to the painter.
+    client, *_ = make()
+    page = client.get("/dragon-gallery").text
+    cta_css = page[page.index(".cta a {"):page.index("}", page.index(".cta a {"))]
+    assert "animation" not in cta_css and "cta-glow" not in page
