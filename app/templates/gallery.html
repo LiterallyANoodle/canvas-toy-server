@@ -68,7 +68,9 @@
             line-height: 0;
         }
 
-        .framed .frame { width: 100%; height: auto; image-rendering: auto; }
+        /* The frame is drawn on top of the drawing; clicks pass through it, so right-click
+           "open image in new tab" gets the drawing, not the frame (operator, msg 559). */
+        .framed .frame { width: 100%; height: auto; image-rendering: auto; pointer-events: none; }
 
         .framed .opening {
             position: absolute;
@@ -82,6 +84,20 @@
         }
 
         .framed .opening.standard { background: white; }
+        /* A hidden lot keeps its frame; the opening shows a grey card instead (operator, msg 558). */
+        .hidden-note {
+            position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center; text-align: center;
+            background: #9a9a9a;
+            color: #555;
+            text-shadow: 1px 1px 0 #b8b8b8;
+            font-family: "UnifrakturMaguntia", cursive;
+            font-size: clamp(1.4em, 6vw, 2.6em);
+            line-height: 1.2;
+            padding: 0 8%;
+        }
+        .hidden-note[hidden], .drawing[hidden] { display: none; }
+        .comment.gone .text { color: #888; font-style: italic; }
 
         /* width is set per drawing: 100% for the standard canvas, less for a smaller one */
         .framed .drawing {
@@ -162,7 +178,7 @@
             <div class="lot" id="lot">Lot No. {{ drawing.number }}</div>
             <div>
                 <span class="framed">
-                    <span id="opening" class="opening{% if standard %} standard{% endif %}"><img id="drawing" class="drawing" style="width: {{ scale_pct }}%" src="/images/{{ drawing.id }}.png" alt="Drawing #{{ drawing.number }}"></span>
+                    <span id="opening" class="opening{% if standard and not drawing.hidden %} standard{% endif %}"><img id="drawing" class="drawing" style="width: {{ scale_pct }}%"{% if drawing.hidden %} hidden{% else %} src="/images/{{ drawing.id }}.png"{% endif %} alt="Drawing #{{ drawing.number }}"><span id="hidden-note" class="hidden-note"{% if not drawing.hidden %} hidden{% endif %}>This lot has been hidden</span></span>
                     <img class="frame" src="/Assets/Square-Gold-Frame-PNG-908289183.png" alt="">
                 </span>
             </div>
@@ -197,8 +213,13 @@
             </div>
             <div id="comment-list">
             {% for c in comments %}
+            {% if c.hidden %}
+            <div class="comment gone"><span class="who">{{ when(c.created_at) }}</span>
+<span class="text">This comment has been hidden</span></div>
+            {% else %}
             <div class="comment"><span class="who">{{ c.name or "Anonymous" }} &middot; {{ when(c.created_at) }}</span>
 {{ c.body }}</div>
+            {% endif %}
             {% else %}
             <p class="none">No comments yet.</p>
             {% endfor %}
@@ -246,8 +267,11 @@
             document.title = "Dragon Gallery #" + d.number;
             document.getElementById("lot").textContent = "Lot No. " + d.number;
             var img = document.getElementById("drawing");
-            img.src = d.image; img.alt = "Drawing #" + d.number; img.style.width = d.scale_pct + "%";
-            document.getElementById("opening").classList.toggle("standard", d.standard);
+            if (d.hidden) { img.removeAttribute("src"); img.hidden = true; }
+            else { img.src = d.image; img.hidden = false; }
+            img.alt = "Drawing #" + d.number; img.style.width = d.scale_pct + "%";
+            document.getElementById("hidden-note").hidden = !d.hidden;
+            document.getElementById("opening").classList.toggle("standard", d.standard && !d.hidden);
             var plaque = document.getElementById("plaque");
             plaque.replaceChildren(timeEl(d.created_at, "date", d.date));
             setLink("nav-first", d.first !== d.number ? d.first : null);
@@ -263,9 +287,16 @@
             }
             d.comments.forEach(function (c) {
                 var div = document.createElement("div"), who = document.createElement("span");
-                div.className = "comment"; who.className = "who";
-                who.append((c.name || "Anonymous") + " \u00b7 ", timeEl(c.created_at, "datetime", c.when));
-                div.append(who, "\n" + c.body);
+                div.className = c.hidden ? "comment gone" : "comment"; who.className = "who";
+                if (c.hidden) {
+                    var t = document.createElement("span");
+                    t.className = "text"; t.textContent = "This comment has been hidden";
+                    who.append(timeEl(c.created_at, "datetime", c.when));
+                    div.append(who, "\n", t);
+                } else {
+                    who.append((c.name || "Anonymous") + " \u00b7 ", timeEl(c.created_at, "datetime", c.when));
+                    div.append(who, "\n" + c.body);
+                }
                 list.appendChild(div);
             });
             document.getElementById("comment-form").action = "/dragon-gallery/image/" + d.number + "/comments";
@@ -279,7 +310,7 @@
             busy = true;
             fetch("/dragon-gallery/api/image/" + n)
                 .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-                .then(function (d) { return preload(d.image).then(function () { return d; }); })
+                .then(function (d) { return d.image ? preload(d.image).then(function () { return d; }) : d; })
                 .then(function (d) {
                     render(d);
                     if (push) history.pushState({ n: d.number }, "", "/dragon-gallery/image/" + d.number);

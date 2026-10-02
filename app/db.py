@@ -22,6 +22,7 @@ class Drawing:
     created_at: datetime
     width: int | None = None          # None: the standard canvas
     height: int | None = None
+    hidden: bool = False              # hidden drawings keep their slot, without the picture
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,7 @@ class Comment:
     created_at: datetime
     body: str
     name: str | None = None
+    hidden: bool = False              # shown as "This comment has been hidden" (body and name withheld)
 
 
 @dataclass(frozen=True)
@@ -146,10 +148,10 @@ class Drawings:
         return int(row[0]) if row else None
 
     async def by_number(self, number: int) -> Drawing | None:
-        """A visible drawing by gallery number, or None."""
+        """A drawing by gallery number (hidden ones too: they keep their slot), or None."""
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                RANKED + "SELECT id, pos, created_at, width, height FROM ranked WHERE pos = %s AND NOT hidden",
+                RANKED + "SELECT id, pos, created_at, width, height, hidden FROM ranked WHERE pos = %s",
                 (number,))
             row = await cur.fetchone()
             return Drawing(*row) if row else None
@@ -160,11 +162,11 @@ class Drawings:
             return await cur.fetchone() is not None
 
     async def neighbours(self, number: int) -> tuple[int | None, int | None]:
-        """The visible drawings just before and just after `number` (hidden ones skipped)."""
+        """The drawings just before and just after `number` (hidden ones included: they keep their slot)."""
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                RANKED + "SELECT (SELECT max(pos) FROM ranked WHERE pos < %s AND NOT hidden),"
-                         "       (SELECT min(pos) FROM ranked WHERE pos > %s AND NOT hidden)",
+                RANKED + "SELECT (SELECT max(pos) FROM ranked WHERE pos < %s),"
+                         "       (SELECT min(pos) FROM ranked WHERE pos > %s)",
                 (number, number))
             row = await cur.fetchone()
             return (row[0], row[1]) if row else (None, None)
@@ -177,13 +179,13 @@ class Drawings:
 
     async def first_number(self) -> int | None:
         async with self.pool.connection() as conn:
-            cur = await conn.execute(RANKED + "SELECT min(pos) FROM ranked WHERE NOT hidden")
+            cur = await conn.execute(RANKED + "SELECT min(pos) FROM ranked")
             row = await cur.fetchone()
             return row[0] if row else None
 
     async def last_number(self) -> int | None:
         async with self.pool.connection() as conn:
-            cur = await conn.execute(RANKED + "SELECT max(pos) FROM ranked WHERE NOT hidden")
+            cur = await conn.execute(RANKED + "SELECT max(pos) FROM ranked")
             row = await cur.fetchone()
             return row[0] if row else None
 
@@ -201,7 +203,7 @@ class Drawings:
     async def get(self, drawing_id: uuid.UUID) -> Drawing | None:
         """Any drawing by id, hidden or not, with its current number."""
         async with self.pool.connection() as conn:
-            cur = await conn.execute(RANKED + "SELECT id, pos, created_at, width, height FROM ranked WHERE id = %s",
+            cur = await conn.execute(RANKED + "SELECT id, pos, created_at, width, height, hidden FROM ranked WHERE id = %s",
                                      (drawing_id,))
             row = await cur.fetchone()
             return Drawing(*row) if row else None
@@ -250,10 +252,10 @@ class Comments:
             return int(row[0])
 
     async def for_drawing(self, drawing_id: uuid.UUID) -> list[Comment]:
-        """Visible comments, oldest first."""
+        """All comments, oldest first, hidden ones flagged (the caller withholds their text)."""
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT id, created_at, body, name FROM comments WHERE drawing_id = %s AND NOT hidden"
+                "SELECT id, created_at, body, name, hidden FROM comments WHERE drawing_id = %s"
                 " ORDER BY created_at, id", (drawing_id,))
             return [Comment(*r) for r in await cur.fetchall()]
 

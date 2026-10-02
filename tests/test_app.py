@@ -47,7 +47,7 @@ class FakeDrawings:
             return None
         k = ranked[number - 1]
         r = self.rows[k]
-        return None if r[3] else Drawing(r[0], number, r[2], *self.sizes.get(k, (None, None)))
+        return Drawing(r[0], number, r[2], *self.sizes.get(k, (None, None)), r[3])
 
     async def exists_visible(self, drawing_id):
         return any(r[0] == drawing_id and not r[3] for r in self.rows.values())
@@ -56,7 +56,8 @@ class FakeDrawings:
         return not self.fail
 
     def _visible(self):
-        return [i + 1 for i, k in enumerate(self._ranked()) if not self.rows[k][3]]
+        """Every slot: hidden drawings keep theirs (msg 557)."""
+        return list(range(1, len(self.rows) + 1))
 
     async def neighbours(self, number):
         vis = self._visible()
@@ -78,7 +79,7 @@ class FakeDrawings:
 
     async def get(self, drawing_id):
         k = self._find(drawing_id)
-        return Drawing(self.rows[k][0], self._pos(k), self.rows[k][2]) if k is not None else None
+        return Drawing(self.rows[k][0], self._pos(k), self.rows[k][2], None, None, self.rows[k][3]) if k is not None else None
 
     async def exists(self, drawing_id):
         return self._find(drawing_id) is not None
@@ -116,8 +117,8 @@ class FakeComments:
         return Comment(comment_id, c["created_at"], c["body"], c["name"]) if c else None
 
     async def for_drawing(self, drawing_id):
-        return [Comment(i, c["created_at"], c["body"], c["name"]) for i, c in sorted(self.rows.items())
-                if c["drawing_id"] == drawing_id and not c["hidden"]]
+        return [Comment(i, c["created_at"], c["body"], c["name"], c["hidden"]) for i, c in sorted(self.rows.items())
+                if c["drawing_id"] == drawing_id]
 
     async def admin_page(self, limit, offset):
         num = {r[0]: n for n, r in self.drawings.rows.items()}

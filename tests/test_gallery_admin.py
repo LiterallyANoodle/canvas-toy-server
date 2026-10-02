@@ -32,8 +32,8 @@ def test_gallery_root_goes_to_the_first_drawing(make):
     r = client.get("/dragon-gallery", follow_redirects=False)
     assert r.status_code == 200 and "No drawings yet" in r.text
     draw(client, 3)
-    drawings.rows[1] = drawings.rows[1][:3] + (True,)          # #1 hidden: start at #2
-    assert client.get("/dragon-gallery", follow_redirects=False).headers["location"] == "/dragon-gallery/image/2"
+    drawings.rows[1] = drawings.rows[1][:3] + (True,)          # #1 hidden still holds slot 1 (msg 557)
+    assert client.get("/dragon-gallery", follow_redirects=False).headers["location"] == "/dragon-gallery/image/1"
 
 
 def test_the_gallery_page_shows_the_drawing_in_the_frame(make):
@@ -50,13 +50,14 @@ def test_the_gallery_page_shows_the_drawing_in_the_frame(make):
         assert client.get(f"/Assets/{asset}").status_code == 200, asset
 
 
-def test_navigation_skips_hidden_drawings(make):
+def test_navigation_steps_through_hidden_slots(make):
     client, drawings, *_ = make()
     draw(client, 3)
     drawings.rows[2] = drawings.rows[2][:3] + (True,)
     r = client.get("/dragon-gallery/image/1")
-    assert 'href="/dragon-gallery/image/3"' in r.text and "/dragon-gallery/image/2" not in r.text
-    assert client.get("/dragon-gallery/image/2").status_code == 404
+    assert 'id="nav-next" href="/dragon-gallery/image/2"' in r.text
+    page = client.get("/dragon-gallery/image/2")
+    assert page.status_code == 200 and "This lot has been hidden" in page.text
 
 
 def test_a_missing_drawing_gets_a_themed_404(make):
@@ -222,9 +223,10 @@ def test_admin_hides_unhides_and_deletes_drawings(make):
     draw(client)
     did = drawings.rows[1][0]
     assert admin_post(client, f"/admin/drawings/{did}/hide").headers["location"] == "/admin?n=hidden#drawings"
-    assert client.get("/dragon-gallery/image/1").status_code == 404
+    assert client.get(f"/images/{did}.png").status_code == 404
+    assert "This lot has been hidden" in client.get("/dragon-gallery/image/1").text
     admin_post(client, f"/admin/drawings/{did}/unhide")
-    assert client.get("/dragon-gallery/image/1").status_code == 200
+    assert client.get(f"/images/{did}.png").status_code == 200
     assert admin_post(client, f"/admin/drawings/{did}/delete").headers["location"] == "/admin?n=deleted#drawings"
     assert drawings.rows == {} and not (settings.images_dir / f"{did}.png").exists()
     assert admin_post(client, f"/admin/drawings/{did}/delete").headers["location"] == "/admin?n=missing#drawings"
@@ -539,11 +541,18 @@ def test_deleting_the_oldest_renumbers_the_rest(make):
     assert client.get("/dragon-gallery", follow_redirects=False).headers["location"] == "/dragon-gallery/image/1"
 
 
-def test_hidden_drawings_keep_their_place(make):
+def test_hidden_drawings_keep_their_slot_and_comments(make):
+    # msg 557: the slot stays, the picture goes, the comments stay up, the time stays.
     client, drawings, *_ = make(admin_verifier=AllowAll())
     draw(client, 3)
-    admin_post(client, f"/admin/drawings/{drawings.rows[2][0]}/hide")
-    assert client.get("/dragon-gallery/image/2").status_code == 404
+    comment(client, 2, "lovely")
+    hidden_id = drawings.rows[2][0]
+    admin_post(client, f"/admin/drawings/{hidden_id}/hide")
+    page = client.get("/dragon-gallery/image/2").text
+    assert ">Lot No. 2<" in page and "This lot has been hidden" in page and "lovely" in page
+    assert f"/images/{hidden_id}.png" not in page and str(hidden_id) not in page
+    assert 'data-kind="date"' in page                                    # its date still shows
+    assert client.get(f"/images/{hidden_id}.png").status_code == 404
     assert f"/images/{drawings.rows[3][0]}.png" in client.get("/dragon-gallery/image/3").text
 
 
@@ -563,8 +572,8 @@ def test_the_permanent_link_follows_the_number(make):
     assert client.get(f"/dragon-gallery/d/{second}", follow_redirects=False).headers["location"] == "/dragon-gallery/image/2"
     admin_post(client, f"/admin/drawings/{drawings.rows[1][0]}/delete")
     assert client.get(f"/dragon-gallery/d/{second}", follow_redirects=False).headers["location"] == "/dragon-gallery/image/1"
-    admin_post(client, f"/admin/drawings/{second}/hide")
-    assert client.get(f"/dragon-gallery/d/{second}").status_code == 404
+    admin_post(client, f"/admin/drawings/{second}/hide")                # its slot remains
+    assert client.get(f"/dragon-gallery/d/{second}", follow_redirects=False).headers["location"] == "/dragon-gallery/image/1"
     assert client.get(f"/dragon-gallery/d/{uuid.uuid4()}").status_code == 404
 
 
@@ -637,13 +646,13 @@ def test_the_frame_is_sized_so_the_drawing_shows_unscaled(make):
 def test_first_and_last_links(make):
     client, drawings, *_ = make()
     draw(client, 4)
-    drawings.rows[4] = drawings.rows[4][:3] + (True,)                  # last visible is No. 3
+    drawings.rows[4] = drawings.rows[4][:3] + (True,)                  # hidden, but still the last slot
     mid = client.get("/dragon-gallery/image/2").text
     assert 'id="nav-first" href="/dragon-gallery/image/1" data-n="1"' in mid
-    assert 'id="nav-last" href="/dragon-gallery/image/3" data-n="3"' in mid
+    assert 'id="nav-last" href="/dragon-gallery/image/4" data-n="4"' in mid
     first = client.get("/dragon-gallery/image/1").text
     assert '<a id="nav-first" class="off">' in first and '<a id="nav-prev" class="off">' in first
-    last = client.get("/dragon-gallery/image/3").text
+    last = client.get("/dragon-gallery/image/4").text
     assert '<a id="nav-last" class="off">' in last and '<a id="nav-next" class="off">' in last
 
 
@@ -656,11 +665,12 @@ def test_the_page_json_has_what_the_page_shows_and_no_more(make):
     assert (j["first"], j["prev"], j["next"], j["last"], j["total"]) == (1, 1, 3, 3, 3)
     assert j["standard"] is True and j["scale_pct"] == 100
     (c,) = j["comments"]
-    assert c["name"] == "Sir Dragon" and c["body"] == "<b>hi</b>" and set(c) == {"name", "body", "created_at", "when"}
+    assert c["name"] == "Sir Dragon" and c["body"] == "<b>hi</b>" and set(c) == {"hidden", "name", "body", "created_at", "when"}
     assert IP not in client.get("/dragon-gallery/api/image/2").text
     assert client.get("/dragon-gallery/api/image/9").status_code == 404
     drawings.rows[3] = drawings.rows[3][:3] + (True,)
-    assert client.get("/dragon-gallery/api/image/3").status_code == 404
+    h = client.get("/dragon-gallery/api/image/3").json()
+    assert h["hidden"] is True and h["image"] is None and str(drawings.rows[3][0]) not in str(h)
 
 
 def test_the_flip_script_uses_text_not_html(make):
@@ -680,3 +690,46 @@ def test_the_jump_box_lines_up_with_the_other_blocks(make):
     page = client.get("/dragon-gallery/image/1").text
     assert ".container div {\n            margin: 5px;" in page
     assert ".jump { background-color: black; padding: 8px; color: gold; margin: 5px; }" in page
+
+
+
+def test_hidden_comments_keep_their_slot_but_not_their_words(make):
+    # msg 557: "This comment has been hidden", time kept, text and name withheld everywhere.
+    client, *_ = make(admin_verifier=AllowAll())
+    draw(client)
+    comment(client, 1, "first one")
+    comment(client, 1, "secret rude words", name="Rude Person")
+    comment(client, 1, "third one")
+    admin_post(client, "/admin/comments/2/hide", {"reason": "zz-mod-reason-zz"})
+    page = client.get("/dragon-gallery/image/1").text
+    assert "secret rude words" not in page and "Rude Person" not in page and "zz-mod-reason-zz" not in page
+    assert page.count('class="comment gone"') == 1 and "This comment has been hidden" in page
+    assert page.index("first one") < page.index("This comment has been hidden") < page.index("third one")
+    gone = page[page.index('class="comment gone"'):page.index("This comment has been hidden")]
+    assert "<time" in gone                                               # the time stays
+    j = client.get("/dragon-gallery/api/image/1").json()
+    assert j["comments"][1] == {"hidden": True, "created_at": j["comments"][1]["created_at"],
+                                "when": j["comments"][1]["when"]}
+    assert "secret" not in str(j) and "Rude Person" not in str(j)
+
+
+
+def test_a_hidden_lot_keeps_its_frame_with_a_grey_card(make):
+    # msg 558: frame stays; grey card, grey blackletter text "This lot has been hidden".
+    client, drawings, *_ = make()
+    draw(client)
+    drawings.rows[1] = drawings.rows[1][:3] + (True,)
+    page = client.get("/dragon-gallery/image/1").text
+    assert "Square-Gold-Frame-PNG-908289183.png" in page
+    note_css = page[page.index(".hidden-note {"):page.index("}", page.index(".hidden-note {"))]
+    assert "UnifrakturMaguntia" in note_css and "background: #9a9a9a" in note_css and "color: #555" in note_css
+    assert '<span id="hidden-note" class="hidden-note">This lot has been hidden</span>' in page
+
+
+
+def test_right_click_reaches_the_drawing_not_the_frame(make):
+    client, *_ = make()
+    draw(client)
+    page = client.get("/dragon-gallery/image/1").text
+    frame_css = page[page.index(".framed .frame {"):page.index("}", page.index(".framed .frame {"))]
+    assert "pointer-events: none" in frame_css

@@ -29,7 +29,7 @@ from . import images
 from .admin_auth import AccessDenied, AccessVerifier
 from .clientip import client_ip
 from .config import Settings
-from .db import BAN_SCOPES
+from .db import BAN_SCOPES, Comment
 from .ratelimit import RateLimiter
 from .webhook import send_to_discord
 
@@ -261,7 +261,7 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
     async def gallery_permalink(request: Request, drawing_id: uuid.UUID):
         """A drawing's permanent address: goes to wherever its number is now."""
         drawing = await state["drawings"].get(drawing_id)
-        if drawing is None or not await state["drawings"].exists_visible(drawing_id):
+        if drawing is None:
             return await gallery_page(request, status_code=404, empty_message="That drawing isn't here any more.")
         return RedirectResponse(f"/dragon-gallery/image/{drawing.number}", status_code=302)
 
@@ -275,7 +275,9 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
         return {"drawing": drawing, "prev": prev, "next": next_, "first": await repo.first_number(),
                 "last": await repo.last_number(), "standard": standard,
                 "scale_pct": 100 if standard else round(100 * w / settings.max_width, 2),
-                "comments": await state["comments"].for_drawing(drawing.id)}
+                # A hidden comment keeps its slot and time; its text and name never leave the server.
+                "comments": [Comment(c.id, c.created_at, "", None, True) if c.hidden else c
+                             for c in await state["comments"].for_drawing(drawing.id)]}
 
     @app.get("/dragon-gallery/api/image/{number}", include_in_schema=False)
     async def gallery_image_json(number: int):
@@ -286,11 +288,14 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
             return JSONResponse({"error": "no such drawing"}, status_code=404)
         v = await drawing_view(drawing)
         return {
-            "number": drawing.number, "image": f"/images/{drawing.id}.png",
+            "number": drawing.number, "hidden": drawing.hidden,
+            "image": None if drawing.hidden else f"/images/{drawing.id}.png",
             "created_at": drawing.created_at.isoformat(), "date": drawing.created_at.strftime("%-d %B %Y"),
             "standard": v["standard"], "scale_pct": v["scale_pct"], "total": await state["drawings"].count(),
             "first": v["first"], "prev": v["prev"], "next": v["next"], "last": v["last"],
-            "comments": [{"name": c.name, "body": c.body, "created_at": c.created_at.isoformat(),
+            "comments": [{"hidden": True, "created_at": c.created_at.isoformat(),
+                          "when": f"{c.created_at:%Y-%m-%d %H:%M} UTC"} if c.hidden else
+                         {"hidden": False, "name": c.name, "body": c.body, "created_at": c.created_at.isoformat(),
                           "when": f"{c.created_at:%Y-%m-%d %H:%M} UTC"} for c in v["comments"]],
         }
 
