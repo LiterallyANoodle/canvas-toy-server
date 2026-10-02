@@ -31,12 +31,13 @@
         /* The red carpet with gold trim behind the whole column (operator, msg 573). Drawn at
            24px and shown at 2x, crunchy on purpose. */
         /* Gold trim on all four sides from one 9-slice image (12px corners, shown 2x), red
-           inside it, and a tassel off each corner (operator, msg 602). The column's content
-           keeps its 648px: 748 = 648 + 2 x 24 trim + 2 x 26 red. */
+           inside it, and a tassel off each corner (operator, msg 602). The content keeps the
+           700px it had before the carpet, so the blocks are 680px and the 642px frame sits a
+           little inside them at 1:1 (msg 627): 800 = 700 + 2 x 24 trim + 2 x 26 red. */
         .container {
             position: relative;
             box-sizing: border-box;
-            max-width: 748px;
+            max-width: 800px;
             margin: 64px auto;
             padding: 10px 26px;
             border: 24px solid transparent;
@@ -85,7 +86,7 @@
         /* Narrow screens (phones): the corners stay pinned to the bottom corners, smaller, but
            only appear once the drawing has scrolled clear of them, so they never cover it
            (operator, msg 625). The page script adds .tucked while the drawing is in the way. */
-        @media (max-width: 1120px) {
+        @media (max-width: 1260px) {
             .corner { bottom: 6px; transition: opacity 0.25s, visibility 0.25s; }
             .corner.left { left: 6px; }
             .corner.right { right: 6px; }
@@ -340,7 +341,7 @@
 
         // On narrow screens, keep the corners out of the way until the drawing has scrolled
         // above the strip they occupy (msg 625). Wide screens never tuck them.
-        var narrow = window.matchMedia ? window.matchMedia("(max-width: 1120px)") : { matches: false };
+        var narrow = window.matchMedia ? window.matchMedia("(max-width: 1260px)") : { matches: false };
         function placeCorners() {
             var frame = document.querySelector(".framed");
             var zone = Math.max(quartet.offsetHeight, document.getElementById("spike").offsetHeight) + 12;

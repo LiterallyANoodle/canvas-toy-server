@@ -837,7 +837,26 @@ def test_phone_corners_are_pinned_and_tuck_away_from_the_drawing(make):
     client, *_ = make()
     draw(client)
     page = client.get("/dragon-gallery/image/1").text
-    narrow = page[page.index("@media (max-width: 1120px)"):]
+    narrow = page[page.index("@media (max-width: 1260px)"):]
     narrow = narrow[:narrow.index("body.wine")]
     assert "position: static" not in narrow and ".corner.tucked { opacity: 0; visibility: hidden; pointer-events: none; }" in narrow
     assert "function placeCorners()" in page and "dragonPlaceCorners" in page
+
+
+
+def test_the_frame_fits_inside_the_column_at_1to1(make):
+    # msg 627: the carpet's trim and padding had squeezed the content to 648px, so the 642px
+    # frame got capped to the 628px blocks (same width as everything, and scaled down again).
+    import re
+    client, *_ = make()
+    draw(client)
+    page = client.get("/dragon-gallery/image/1").text
+    col = page[page.index("        .container {\n            position: relative;"):]
+    col = col[:col.index("}")]
+    max_w = int(re.search(r"max-width: (\d+)px", col).group(1))
+    border = int(re.search(r"border: (\d+)px solid", col).group(1))
+    pad_x = int(re.search(r"padding: \d+px (\d+)px", col).group(1))
+    content = max_w - 2 * border - 2 * pad_x
+    blocks = content - 2 * 5 - 2 * 5                      # .content margin + each block's margin
+    frame = 900 * 500 / 701
+    assert content == 700 and blocks > frame, (content, blocks, frame)
