@@ -23,7 +23,7 @@ from tests.test_app import FakeBans, FakeComments, FakeDrawings, FakeModLog, Fak
 from tests.test_units import canvas_like, data_url
 
 JS = Path(__file__).parent / "js"
-HARNESSES = ["flip", "decor", "comment", "tuck", "hover", "refresh", "send"]
+HARNESSES = ["flip", "decor", "comment", "tuck", "hover", "refresh", "send", "undo"]
 
 
 def app(images):

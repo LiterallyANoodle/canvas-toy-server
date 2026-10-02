@@ -371,6 +371,19 @@
             }, false); // mobile
             colorPicker.value = paintbrush.color;
             colorPicker.addEventListener("change", setBrushColor, false);
+
+            // keyboard: ctrl+z undoes, ctrl+y (or ctrl+shift+z) redoes; cmd works too on a Mac
+            document.addEventListener("keydown", (e) => {
+                if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+                const key = e.key.toLowerCase();
+                if (key === "z" && !e.shiftKey) {
+                    e.preventDefault();
+                    undoDraw();
+                } else if (key === "y" || (key === "z" && e.shiftKey)) {
+                    e.preventDefault();
+                    redoDraw();
+                }
+            }, false);
         }
 
         async function sendImage() {
