@@ -28,6 +28,57 @@
 			height: auto;
 		}
 
+        /* The red carpet with gold trim behind the whole column (operator, msg 573). Drawn at
+           24px and shown at 2x, crunchy on purpose. */
+        .container {
+            position: relative;
+            box-sizing: border-box;
+            padding: 6px 26px;
+            background: url(/Assets/carpet_tile.png) repeat;
+            background-size: 48px 48px;
+            image-rendering: pixelated;
+        }
+        .container::before, .container::after {
+            content: ""; position: absolute; top: 0; bottom: 0; width: 24px;
+            background: url(/Assets/gold_trim.png) repeat-y;
+            background-size: 24px 32px;
+            image-rendering: pixelated;
+        }
+        .container::before { left: 0; }
+        .container::after { right: 0; transform: scaleX(-1); }
+        .container img.frame, .container .drawing { image-rendering: auto; }
+
+        /* The two glowing corners: the quartet plays the Four Seasons; Spike's table turns the
+           cursor into a wine glass that says "hmmmm" on every click. */
+        .corner {
+            position: fixed; bottom: 12px; z-index: 5;
+            background: none; border: 0; padding: 0; cursor: pointer;
+            animation: glow 2.4s ease-in-out infinite;
+        }
+        .corner img { display: block; image-rendering: pixelated; }
+        .corner.left { left: 12px; }
+        .corner.left img { width: 162px; }
+        .corner.right { right: 12px; }
+        .corner.right img { width: 190px; }
+        .corner.on { animation: glow-on 1.2s ease-in-out infinite; }
+        @keyframes glow {
+            0%, 100% { filter: drop-shadow(0 0 6px rgba(255, 215, 110, 0.55)); }
+            50% { filter: drop-shadow(0 0 14px rgba(255, 215, 110, 0.95)); }
+        }
+        @keyframes glow-on {
+            0%, 100% { filter: drop-shadow(0 0 10px rgba(255, 240, 160, 0.9)); }
+            50% { filter: drop-shadow(0 0 22px rgba(255, 240, 160, 1)); }
+        }
+        /* No room beside the column (phones, small windows): the corners sit above the banner. */
+        .corner-row { display: contents; }               /* wide screens: the corners are fixed, the row is invisible */
+        @media (max-width: 1120px) {
+            .corner-row { display: flex; justify-content: space-between; align-items: flex-end; max-width: 700px; margin: 0 auto 4px; }
+            .corner { position: static; }
+            .corner.left img { width: 81px; }
+            .corner.right img { width: 95px; }
+        }
+        body.wine, body.wine * { cursor: url(/Assets/wine_cursor.png) 16 4, auto !important; }
+
         .container div {
             margin: 5px;
         }
@@ -156,6 +207,10 @@
     </style>
 </head>
 <body>
+    <div class="corner-row">
+        <button id="quartet" class="corner left" type="button" title="Music, maestro" aria-pressed="false"><img src="/Assets/quartet.png" alt="A string quartet: play the Four Seasons"></button>
+        <button id="spike" class="corner right" type="button" title="A glass of wine?" aria-pressed="false"><img src="/Assets/spike_table.png" alt="Spike in a tuxedo by a table of red wine"></button>
+    </div>
     <div class="container">
         <div class="content">
             <div class="title">
@@ -235,6 +290,46 @@
         </div>
     </div>
     {{ localize_script() }}
+    <script>
+    /* The quartet plays the Four Seasons from Spring, round and round; Spike hands you a glass
+       of wine, and every click is then a ponderous DOOM "hmmmm" (operator, msg 573). */
+    (function () {
+        var seasons = ["spring", "summer", "autumn", "winter"], track = 0;
+        var music = new Audio(), quartet = document.getElementById("quartet");
+        music.preload = "none";
+        music.addEventListener("ended", function () {
+            track = (track + 1) % seasons.length;
+            music.src = "/music/" + seasons[track] + ".mp3";
+            music.play();
+        });
+        var playing = false;
+        quartet.addEventListener("click", function () {
+            playing = !playing;
+            if (playing) {
+                if (!music.getAttribute("src")) music.src = "/music/" + seasons[track] + ".mp3";
+                music.play().catch(function () { playing = false; quartet.classList.remove("on"); });
+            } else {
+                music.pause();
+            }
+            quartet.classList.toggle("on", playing);
+            quartet.setAttribute("aria-pressed", playing);
+        });
+
+        var spike = document.getElementById("spike"), hmmm = "/sounds/hmmm.mp3", warmed = false;
+        spike.addEventListener("click", function (e) {
+            e.stopPropagation();                               // taking or putting down the glass isn't a sip
+            var on = document.body.classList.toggle("wine");
+            spike.classList.toggle("on", on);
+            spike.setAttribute("aria-pressed", on);
+            if (on && !warmed) { new Audio(hmmm).load(); warmed = true; }
+        });
+        document.addEventListener("click", function () {   // bubble phase: Spike's own click stops before here
+            if (!document.body.classList.contains("wine")) return;
+            var a = new Audio(hmmm);                           // a fresh one each click, so they can overlap
+            a.play().catch(function () {});
+        });
+    })();
+    </script>
     {% if drawing %}
     <script>
     /* Flip through the gallery without reloading (operator, msg 553). Any failure falls back to

@@ -177,6 +177,8 @@ def create_app(settings: Settings | None = None, drawings=None, comments=None, b
         return FileResponse(STATIC / "draw.html", media_type="text/html")
 
     app.mount("/Assets", StaticFiles(directory=STATIC / "Assets"), name="assets")
+    app.mount("/music", StaticFiles(directory=STATIC / "music"), name="music")
+    app.mount("/sounds", StaticFiles(directory=STATIC / "sounds"), name="sounds")
 
     @app.post("/submit")
     async def submit(request: Request):

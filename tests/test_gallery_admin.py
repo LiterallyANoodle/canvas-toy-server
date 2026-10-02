@@ -733,3 +733,33 @@ def test_right_click_reaches_the_drawing_not_the_frame(make):
     page = client.get("/dragon-gallery/image/1").text
     frame_css = page[page.index(".framed .frame {"):page.index("}", page.index(".framed .frame {"))]
     assert "pointer-events: none" in frame_css
+
+
+# --- the gussied-up gallery (operator msg 573) -------------------------------
+def test_decor_assets_are_served(make):
+    client, *_ = make()
+    for path in ("/Assets/carpet_tile.png", "/Assets/gold_trim.png", "/Assets/quartet.png",
+                 "/Assets/spike_table.png", "/Assets/wine_cursor.png", "/sounds/hmmm.mp3",
+                 "/sounds/FREEDOOM-COPYING.txt"):
+        assert client.get(path).status_code == 200, path
+    for season in ("spring", "summer", "autumn", "winter"):
+        r = client.get(f"/music/{season}.mp3", headers={"Range": "bytes=0-99"})
+        assert r.status_code == 206 and len(r.content) == 100, season          # seekable
+
+
+def test_the_gallery_has_the_carpet_and_both_corners(make):
+    client, *_ = make()
+    draw(client)
+    for page in (client.get("/dragon-gallery/image/1").text, client.get("/dragon-gallery/image/9").text):
+        assert 'id="quartet"' in page and 'id="spike"' in page
+        assert "carpet_tile.png" in page and "gold_trim.png" in page and "wine_cursor.png" in page
+        assert '"spring", "summer", "autumn", "winter"' in page and "/sounds/hmmm.mp3" in page
+
+
+def test_the_freedoom_notice_ships_with_the_sound():
+    from pathlib import Path
+    notice = Path("app/static/sounds/FREEDOOM-COPYING.txt").read_text()
+    assert "Contributors to the Freedoom project" in notice and "Redistribution and use" in notice
+    credits = Path("app/static/Assets/SOURCE.md").read_text()
+    for name in ("quartet.png", "papapishu", "CC0", "Freedoom", "Modena", "spike_table.png"):
+        assert name in credits, name
