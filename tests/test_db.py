@@ -60,8 +60,8 @@ def test_round_trip_and_hidden(repo):
         async with pool.connection() as conn:
             await conn.execute("UPDATE drawings SET hidden = true WHERE id = %s", (did,))
     loop.run_until_complete(hide())
-    assert loop.run_until_complete(drawings.by_number(n)) is None
-    assert not loop.run_until_complete(drawings.exists_visible(did))
+    assert loop.run_until_complete(drawings.by_number(n)).hidden          # keeps its slot (msg 557)
+    assert not loop.run_until_complete(drawings.exists_visible(did))      # but its image isn't served
 
 
 def test_an_invalid_ip_is_rejected_by_the_database(repo):
@@ -75,17 +75,18 @@ def _run(loop, coro):
     return loop.run_until_complete(coro)
 
 
-def test_neighbours_skip_hidden_and_first_number(repo):
+def test_neighbours_and_ends_include_hidden_slots(repo):
     loop, drawings, *_ = repo
     now = datetime.now(timezone.utc)
     ids = [uuid.uuid4() for _ in range(4)]
     for i in ids:
         _run(loop, drawings.add(i, "203.0.113.7", now, 500, 500))
     _run(loop, drawings.set_hidden(ids[1], True))
-    assert _run(loop, drawings.neighbours(1)) == (None, 3)
-    assert _run(loop, drawings.neighbours(3)) == (1, 4)
+    assert _run(loop, drawings.neighbours(1)) == (None, 2)
+    assert _run(loop, drawings.neighbours(3)) == (2, 4)
     _run(loop, drawings.set_hidden(ids[0], True))
-    assert _run(loop, drawings.first_number()) == 3
+    assert _run(loop, drawings.first_number()) == 1 and _run(loop, drawings.last_number()) == 4
+    assert _run(loop, drawings.by_number(1)).hidden
     got = _run(loop, drawings.by_number(3))
     assert (got.width, got.height) == (500, 500)
 
@@ -101,7 +102,7 @@ def test_comments_and_delete_cascade(repo):
     _run(loop, comments.add(did, "second", "2001:db8::2", now))
     assert [c.body for c in _run(loop, comments.for_drawing(did))] == ["first", "second"]
     _run(loop, comments.set_hidden(a, True))
-    assert [c.body for c in _run(loop, comments.for_drawing(did))] == ["second"]
+    assert [(c.body, c.hidden) for c in _run(loop, comments.for_drawing(did))] == [("first", True), ("second", False)]
     page = _run(loop, comments.admin_page(10, 0))
     assert [(c.body, c.ip, c.hidden, c.drawing_number) for c in page] == \
         [("second", "2001:db8::2", False, 1), ("first", "203.0.113.8", True, 1)]
@@ -151,7 +152,7 @@ def test_numbers_are_positions_by_age(repo):
     assert (small.id, small.width, small.height) == (old[1][0], 120, 80)
     assert _run(loop, drawings.get(ids[1])).number == 3
     _run(loop, drawings.set_hidden(ids[1], True))
-    assert _run(loop, drawings.by_number(3)) is None and _run(loop, drawings.neighbours(2)) == (1, 4)
+    assert _run(loop, drawings.by_number(3)).hidden and _run(loop, drawings.neighbours(2)) == (1, 3)
     (d,) = [d for d in _run(loop, drawings.admin_page(10, 0)) if d.id == old[0][0]]
     assert d.number == 1 and d.ip is None
     with pytest.raises(Exception):                       # all or nothing
