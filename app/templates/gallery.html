@@ -257,7 +257,6 @@
                 <h1><a href="/dragon-gallery">Dragon Gallery</a></h1>
                 <img src="{{ asset('/Assets/sword3.gif') }}" alt="">
             </div>
-            <div class="cta"><a href="/draw">&#9998; Send the dragon a drawing of your own! &#9998;</a></div>
             {% macro jump_box() -%}
             {% if total %}
             <form class="jump" id="jump" method="get" action="/dragon-gallery/go">
@@ -292,6 +291,8 @@
             <div class="nav"><span></span><a href="/draw">draw one!</a><span></span></div>
             {{ jump_box() }}
             {% endif %}
+            {# between the selector bar and the comments (operator, msg 647) #}
+            <div class="cta"><a href="/draw">&#9998; Send the dragon a drawing of your own! &#9998;</a></div>
         {% if drawing %}
         <div class="comments" id="comments">
             <h2>Comments</h2>

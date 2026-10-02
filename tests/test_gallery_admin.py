@@ -905,12 +905,16 @@ def test_the_refresh_link_is_on_drawing_pages(make):
 # --- both ways obvious (operator msgs 643/644) ------------------------------
 def test_the_gallery_invites_drawing_and_the_canvas_points_to_the_gallery(make):
     client, *_ = make()
-    for page in (client.get("/dragon-gallery").text, client.get("/dragon-gallery/image/5").text):
-        cta = page[page.index('<div class="cta">'):]
-        assert cta.startswith('<div class="cta"><a href="/draw">') and page.index('class="cta"') < page.index('id="jump"' if 'id="jump"' in page else '</body>')
-    draw = client.get("/draw").text
-    assert '<a class="gallery-link" href="/dragon-gallery">' in draw
-    assert draw.index('class="gallery-link"') < draw.index("<canvas")             # above the canvas
+    draw(client, 2)
+    for page in (client.get("/dragon-gallery/image/1").text, client.get("/dragon-gallery/image/5").text):
+        assert page.count('<div class="cta"><a href="/draw">') == 1
+        # between the selector bar (nav + jump box) and the comments (msg 647)
+        assert page.index('id="jump"') < page.index('<div class="cta">')
+        if 'id="comments"' in page:
+            assert page.index('<div class="cta">') < page.index('id="comments"')
+    canvas_page = client.get("/draw").text
+    assert '<a class="gallery-link" href="/dragon-gallery">' in canvas_page
+    assert canvas_page.index('class="gallery-link"') < canvas_page.index("<canvas")   # above the canvas
 
 
 
