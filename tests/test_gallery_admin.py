@@ -827,5 +827,5 @@ def test_every_asset_url_on_the_gallery_is_versioned_and_served(make):
         assert v, f"unversioned: {ref}"
         assert v == hashlib.sha256(Path("app/static", path.lstrip("/")).read_bytes()).hexdigest()[:10], ref
         assert client.get(ref).status_code == 200, ref
-    for season in ("spring", "summer", "autumn", "winter"):
+    for season in ("spring", "summer", "autumn", "winter", "minuet"):
         assert any(r.startswith(f"/music/{season}.mp3?v=") for r in refs), season

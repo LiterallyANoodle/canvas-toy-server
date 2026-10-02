@@ -306,9 +306,10 @@
     /* The quartet plays the Four Seasons from Spring, round and round; Spike hands you a glass
        of wine, and every click is then a ponderous DOOM "hmmmm" (operator, msg 573). */
     (function () {
-        var seasons = ["spring", "summer", "autumn", "winter"], track = -1;
+        var seasons = ["spring", "summer", "autumn", "winter", "minuet"], track = -1;
         var tracks = { spring: "{{ asset('/music/spring.mp3') }}", summer: "{{ asset('/music/summer.mp3') }}",
-                       autumn: "{{ asset('/music/autumn.mp3') }}", winter: "{{ asset('/music/winter.mp3') }}" };
+                       autumn: "{{ asset('/music/autumn.mp3') }}", winter: "{{ asset('/music/winter.mp3') }}",
+                       minuet: "{{ asset('/music/minuet.mp3') }}" };
         var music = new Audio(), quartet = document.getElementById("quartet");
         music.preload = "none";
         music.addEventListener("ended", function () {

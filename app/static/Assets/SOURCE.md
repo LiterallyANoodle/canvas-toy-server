@@ -25,4 +25,9 @@ Sounds and music (`../sounds/`, `../music/`):
 - `music/spring.mp3` ... `winter.mp3`: Vivaldi, The Four Seasons, Op. 8 Nos. 1-4, The Modena
   Chamber Orchestra, from Musopen (musopen.org), public domain (Public Domain Mark). Tags
   stripped, audio untouched.
-
+- `music/minuet.mp3`: Boccherini, String Quintet in E Major, Op. 11, No. 5, G. 275: III.
+  Minuetto. Budapest Strings, conductor Bela Banfalvi. From "Chamber Music (Romantic 19th
+  Century)", (P) 1996 Capriccio. A commercial recording (the composition is public domain, the
+  recording is not), supplied by the operator and added at his explicit choice (2026-10-02,
+  msgs 619-622) knowing it may draw a takedown request; remove it if one arrives. Tags
+  stripped, audio untouched.
